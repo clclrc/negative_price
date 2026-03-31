@@ -33,6 +33,7 @@ from .models import (
     require_torch,
     train_sequence_model,
 )
+from .progress import ProgressReporter, estimate_remaining_seconds, format_duration, format_metric
 
 
 LOGISTIC_CANDIDATES = (0.1, 1.0, 10.0)
@@ -52,14 +53,26 @@ def run_experiment(
     final_train_range=None,
     final_test_range=None,
     skip_unavailable_models: bool = False,
+    reporter: ProgressReporter | None = None,
 ) -> dict[str, Path]:
+    reporter = reporter or ProgressReporter()
     output_path = Path(output_dir).resolve() / config.name
     output_path.mkdir(parents=True, exist_ok=True)
     folds = tuple(folds or WALK_FORWARD_FOLDS)
     final_train_range = final_train_range or FINAL_TRAIN_RANGE
     final_test_range = final_test_range or FINAL_TEST_RANGE
 
+    prep_started_at = reporter.now()
+    reporter.log((config.name,), "data prep started")
     prepared = prepare_experiment_data(config)
+    reporter.log(
+        (config.name,),
+        (
+            f"data prep completed | samples={len(prepared.sample_manifest)} "
+            f"| countries={len(prepared.country_panels)} "
+            f"| elapsed={format_duration(reporter.now() - prep_started_at)}"
+        ),
+    )
     prepared.sample_manifest.to_csv(output_path / "sample_manifest.csv", index=False)
 
     metrics_rows: list[dict[str, object]] = []
@@ -67,17 +80,45 @@ def run_experiment(
     chosen_records: dict[str, dict[str, object]] = {}
 
     models = tuple(config.models or DEFAULT_MODELS)
-    for model_name in models:
+    model_loop_started_at = reporter.now()
+    for model_index, model_name in enumerate(models, start=1):
+        model_started_at = reporter.now()
+        reporter.log(
+            (config.name, model_name),
+            f"model {model_index}/{len(models)} validation started",
+        )
         try:
             chosen_records[model_name], model_metrics, model_predictions = _evaluate_model_across_folds(
-                prepared, config, model_name, folds
+                prepared,
+                config,
+                model_name,
+                folds,
+                reporter=reporter,
             )
         except DependencyUnavailableError:
             if skip_unavailable_models:
+                reporter.log(
+                    (config.name, model_name),
+                    (
+                        f"model {model_index}/{len(models)} skipped "
+                        f"| reason=missing dependency "
+                        f"| elapsed={format_duration(reporter.now() - model_started_at)} "
+                        f"| eta={format_duration(estimate_remaining_seconds(loop_started_at=model_loop_started_at, completed_steps=model_index, total_steps=len(models), now=reporter.now()))}"
+                    ),
+                )
                 continue
             raise
         metrics_rows.extend(model_metrics)
         prediction_frames.extend(model_predictions)
+        reporter.log(
+            (config.name, model_name),
+            (
+                f"model {model_index}/{len(models)} validation completed "
+                f"| selected={chosen_records[model_name]['candidate']} "
+                f"| elapsed={format_duration(reporter.now() - model_started_at)} "
+                f"| eta={format_duration(estimate_remaining_seconds(loop_started_at=model_loop_started_at, completed_steps=model_index, total_steps=len(models), now=reporter.now()))}"
+            ),
+        )
 
     train_samples = prepared.select_samples(final_train_range)
     test_samples = prepared.select_samples(final_test_range)
@@ -85,11 +126,38 @@ def run_experiment(
         raise RuntimeError(f"{config.name} has empty final train/test split.")
 
     final_predictions: list[pd.DataFrame] = []
-    for model_name, chosen in chosen_records.items():
-        frame, metrics = _fit_and_score_final_model(prepared, config, model_name, chosen, train_samples, test_samples)
+    final_items = tuple(chosen_records.items())
+    final_loop_started_at = reporter.now()
+    for final_index, (model_name, chosen) in enumerate(final_items, start=1):
+        final_started_at = reporter.now()
+        reporter.log(
+            (config.name, model_name),
+            (
+                f"final stage {final_index}/{len(final_items)} started "
+                f"| train_samples={len(train_samples)} | test_samples={len(test_samples)}"
+            ),
+        )
+        frame, metrics = _fit_and_score_final_model(
+            prepared,
+            config,
+            model_name,
+            chosen,
+            train_samples,
+            test_samples,
+            reporter=reporter,
+        )
         prediction_frames.append(frame)
         final_predictions.append(frame)
         metrics_rows.append(metrics)
+        reporter.log_step(
+            (config.name, model_name),
+            label="final stage",
+            index=final_index,
+            total=len(final_items),
+            loop_started_at=final_loop_started_at,
+            step_started_at=final_started_at,
+            extra=f"pr_auc={format_metric(metrics['pr_auc'])}",
+        )
 
     predictions = pd.concat(prediction_frames, ignore_index=True) if prediction_frames else pd.DataFrame()
     predictions.to_csv(output_path / "predictions.csv", index=False)
@@ -123,7 +191,9 @@ def run_transfer_experiment(
     transfer_config: TransferConfig,
     *,
     output_dir: str | Path,
+    reporter: ProgressReporter | None = None,
 ) -> dict[str, Path]:
+    reporter = reporter or ProgressReporter()
     require_torch()
     output_path = Path(output_dir).resolve() / transfer_config.name
     output_path.mkdir(parents=True, exist_ok=True)
@@ -142,7 +212,17 @@ def run_transfer_experiment(
         random_seed=transfer_config.random_seed,
         use_country_features=False,
     )
+    prep_started_at = reporter.now()
+    reporter.log((transfer_config.name,), "data prep started")
     prepared = prepare_experiment_data(config)
+    reporter.log(
+        (transfer_config.name,),
+        (
+            f"data prep completed | samples={len(prepared.sample_manifest)} "
+            f"| countries={len(prepared.country_panels)} "
+            f"| elapsed={format_duration(reporter.now() - prep_started_at)}"
+        ),
+    )
     prepared.sample_manifest.to_csv(output_path / "sample_manifest.csv", index=False)
 
     source_train = prepared.select_samples(transfer_config.pretrain_train_range, countries=transfer_config.source_countries)
@@ -156,6 +236,11 @@ def run_transfer_experiment(
     source_train_single_class = _single_class_probability(source_train_ds.metadata["y_true"].to_numpy(dtype=int))
     pretrained_model = None
     pretrain = None
+    source_started_at = reporter.now()
+    reporter.log(
+        (transfer_config.name, "SourcePretrain"),
+        f"source pretraining started | train_samples={len(source_train_ds)} | val_samples={len(source_val_ds)}",
+    )
     if source_train_single_class is None:
         pretrain = train_sequence_model(
             "GRU",
@@ -167,6 +252,8 @@ def run_transfer_experiment(
             learning_rate=1e-3,
             max_epochs=30,
             patience=5,
+            reporter=reporter,
+            progress_prefix=(transfer_config.name, "SourcePretrain", "GRU"),
         )
         pretrained_model = load_sequence_model(
             "GRU",
@@ -178,17 +265,43 @@ def run_transfer_experiment(
         source_val_prob = predict_sequence_model(pretrained_model, source_val_ds)
     else:
         source_val_prob = predict_majority(source_train_single_class, len(source_val_ds))
+        reporter.log(
+            (transfer_config.name, "SourcePretrain"),
+            "source pretraining used single-class fallback",
+        )
     source_threshold = find_best_threshold_f1(source_val_ds.metadata["y_true"].to_numpy(dtype=int), source_val_prob)
+    reporter.log(
+        (transfer_config.name, "SourcePretrain"),
+        (
+            f"source pretraining completed | threshold={source_threshold:.4f} "
+            f"| elapsed={format_duration(reporter.now() - source_started_at)}"
+        ),
+    )
 
     metrics_rows: list[dict[str, object]] = []
     prediction_frames: list[pd.DataFrame] = []
 
-    for target_country in transfer_config.target_countries:
+    country_loop_started_at = reporter.now()
+    for country_index, target_country in enumerate(transfer_config.target_countries, start=1):
         test_samples = prepared.select_samples(transfer_config.target_test_range, countries=(target_country,))
         if test_samples.empty:
+            reporter.log(
+                (transfer_config.name, target_country),
+                f"country {country_index}/{len(transfer_config.target_countries)} skipped | reason=no test samples",
+            )
             continue
 
+        country_started_at = reporter.now()
+        reporter.log(
+            (transfer_config.name, target_country),
+            (
+                f"country {country_index}/{len(transfer_config.target_countries)} started "
+                f"| test_samples={len(test_samples)}"
+            ),
+        )
         zero_shot_test_ds = prepared.build_sequence_dataset(test_samples, source_scaler, include_country=False)
+        zero_shot_started_at = reporter.now()
+        reporter.log((transfer_config.name, target_country, "ZeroShot"), "evaluation started")
         if pretrained_model is None:
             zero_shot_prob = predict_majority(source_train_single_class, len(zero_shot_test_ds))
         else:
@@ -215,19 +328,41 @@ def run_transfer_experiment(
                 candidate="source_pretrain",
             )
         )
+        reporter.log(
+            (transfer_config.name, target_country, "ZeroShot"),
+            (
+                f"evaluation completed | pr_auc={format_metric(metrics_rows[-1]['pr_auc'])} "
+                f"| elapsed={format_duration(reporter.now() - zero_shot_started_at)}"
+            ),
+        )
 
         per_budget_metrics: dict[str, float] = {}
-        for budget in transfer_config.adapt_budget:
+        budget_loop_started_at = reporter.now()
+        for budget_index, budget in enumerate(transfer_config.adapt_budget, start=1):
             target_train = prepared.select_samples(budget.train_range, countries=(target_country,))
             target_val = prepared.select_samples(budget.val_range, countries=(target_country,))
             if target_train.empty or target_val.empty:
+                reporter.log(
+                    (transfer_config.name, target_country, budget.name),
+                    f"budget {budget_index}/{len(transfer_config.adapt_budget)} skipped | reason=empty train or val split",
+                )
                 continue
 
+            budget_started_at = reporter.now()
+            reporter.log(
+                (transfer_config.name, target_country, budget.name),
+                (
+                    f"budget {budget_index}/{len(transfer_config.adapt_budget)} started "
+                    f"| train_samples={len(target_train)} | val_samples={len(target_val)}"
+                ),
+            )
             target_scaler = prepared.fit_sequence_scaler(target_train)
             target_train_ds = prepared.build_sequence_dataset(target_train, target_scaler, include_country=False)
             target_val_ds = prepared.build_sequence_dataset(target_val, target_scaler, include_country=False)
             target_test_ds = prepared.build_sequence_dataset(test_samples, target_scaler, include_country=False)
             target_train_single_class = _single_class_probability(target_train_ds.metadata["y_true"].to_numpy(dtype=int))
+            target_only_started_at = reporter.now()
+            reporter.log((transfer_config.name, target_country, budget.name, "TargetOnly"), "evaluation started")
             if target_train_single_class is None:
                 target_only = train_sequence_model(
                     "GRU",
@@ -239,6 +374,8 @@ def run_transfer_experiment(
                     learning_rate=1e-3,
                     max_epochs=30,
                     patience=5,
+                    reporter=reporter,
+                    progress_prefix=(transfer_config.name, target_country, budget.name, "TargetOnly"),
                 )
                 target_only_model = load_sequence_model(
                     "GRU",
@@ -252,6 +389,10 @@ def run_transfer_experiment(
             else:
                 target_only_val_prob = predict_majority(target_train_single_class, len(target_val_ds))
                 target_only_prob = predict_majority(target_train_single_class, len(target_test_ds))
+                reporter.log(
+                    (transfer_config.name, target_country, budget.name, "TargetOnly"),
+                    "evaluation used single-class fallback",
+                )
             target_only_threshold = find_best_threshold_f1(
                 target_val_ds.metadata["y_true"].to_numpy(dtype=int),
                 target_only_val_prob,
@@ -277,10 +418,19 @@ def run_transfer_experiment(
                 candidate=budget.name,
             )
             metrics_rows.append(target_only_metrics)
+            reporter.log(
+                (transfer_config.name, target_country, budget.name, "TargetOnly"),
+                (
+                    f"evaluation completed | pr_auc={format_metric(target_only_metrics['pr_auc'])} "
+                    f"| elapsed={format_duration(reporter.now() - target_only_started_at)}"
+                ),
+            )
 
             transfer_train_ds = prepared.build_sequence_dataset(target_train, source_scaler, include_country=False)
             transfer_val_ds = prepared.build_sequence_dataset(target_val, source_scaler, include_country=False)
             transfer_test_ds = prepared.build_sequence_dataset(test_samples, source_scaler, include_country=False)
+            transfer_started_at = reporter.now()
+            reporter.log((transfer_config.name, target_country, budget.name, "TransferFineTune"), "evaluation started")
             if target_train_single_class is None and pretrained_model is not None and pretrain is not None:
                 transfer = train_sequence_model(
                     "GRU",
@@ -293,6 +443,8 @@ def run_transfer_experiment(
                     max_epochs=15,
                     patience=3,
                     init_state_dict=pretrain.state_dict,
+                    reporter=reporter,
+                    progress_prefix=(transfer_config.name, target_country, budget.name, "TransferFineTune"),
                 )
                 transfer_model = load_sequence_model(
                     "GRU",
@@ -307,6 +459,10 @@ def run_transfer_experiment(
                 fallback_prob = target_train_single_class if target_train_single_class is not None else source_train_single_class
                 transfer_val_prob = predict_majority(fallback_prob, len(transfer_val_ds))
                 transfer_prob = predict_majority(fallback_prob, len(transfer_test_ds))
+                reporter.log(
+                    (transfer_config.name, target_country, budget.name, "TransferFineTune"),
+                    "evaluation used fallback baseline",
+                )
             transfer_threshold = find_best_threshold_f1(
                 transfer_val_ds.metadata["y_true"].to_numpy(dtype=int),
                 transfer_val_prob,
@@ -334,6 +490,23 @@ def run_transfer_experiment(
             transfer_metrics["transfer_gain"] = transfer_metrics["pr_auc"] - target_only_metrics["pr_auc"]
             metrics_rows.append(transfer_metrics)
             per_budget_metrics[budget.name] = transfer_metrics["pr_auc"]
+            reporter.log(
+                (transfer_config.name, target_country, budget.name, "TransferFineTune"),
+                (
+                    f"evaluation completed | pr_auc={format_metric(transfer_metrics['pr_auc'])} "
+                    f"| transfer_gain={format_metric(transfer_metrics['transfer_gain'])} "
+                    f"| elapsed={format_duration(reporter.now() - transfer_started_at)}"
+                ),
+            )
+            reporter.log_step(
+                (transfer_config.name, target_country, budget.name),
+                label="budget",
+                index=budget_index,
+                total=len(transfer_config.adapt_budget),
+                loop_started_at=budget_loop_started_at,
+                step_started_at=budget_started_at,
+                extra=f"transfer_pr_auc={format_metric(transfer_metrics['pr_auc'])}",
+            )
 
         if per_budget_metrics:
             metrics_rows.append(
@@ -347,6 +520,15 @@ def run_transfer_experiment(
                     "pr_auc": float(np.mean(list(per_budget_metrics.values()))),
                 }
             )
+        reporter.log_step(
+            (transfer_config.name, target_country),
+            label="country",
+            index=country_index,
+            total=len(transfer_config.target_countries),
+            loop_started_at=country_loop_started_at,
+            step_started_at=country_started_at,
+            extra=f"budgets={len(per_budget_metrics)}",
+        )
 
     predictions = pd.concat(prediction_frames, ignore_index=True) if prediction_frames else pd.DataFrame()
     predictions.to_csv(output_path / "predictions.csv", index=False)
@@ -370,25 +552,38 @@ def run_transfer_experiment(
     }
 
 
-def _evaluate_model_across_folds(prepared, config: ExperimentConfig, model_name: str, folds) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+def _evaluate_model_across_folds(
+    prepared,
+    config: ExperimentConfig,
+    model_name: str,
+    folds,
+    *,
+    reporter: ProgressReporter,
+) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
     if model_name == "Majority":
-        return _evaluate_majority(prepared, config, folds)
+        return _evaluate_majority(prepared, config, folds, reporter=reporter)
     if model_name == "LogisticRegression":
-        return _evaluate_logistic(prepared, config, folds)
+        return _evaluate_logistic(prepared, config, folds, reporter=reporter)
     if model_name == "XGBoost":
-        return _evaluate_xgboost(prepared, config, folds)
+        return _evaluate_xgboost(prepared, config, folds, reporter=reporter)
     if model_name in ("GRU", "TCN"):
-        return _evaluate_sequence_model(prepared, config, model_name, folds)
+        return _evaluate_sequence_model(prepared, config, model_name, folds, reporter=reporter)
     raise ValueError(f"Unsupported model: {model_name}")
 
 
-def _evaluate_majority(prepared, config: ExperimentConfig, folds) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+def _evaluate_majority(prepared, config: ExperimentConfig, folds, *, reporter: ProgressReporter) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
     metrics_rows: list[dict[str, object]] = []
     prediction_frames: list[pd.DataFrame] = []
     thresholds: list[float] = []
-    for fold in folds:
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
         train = prepared.select_samples(fold.train_range)
         val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, "Majority", fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
         probability = fit_majority_baseline(train["y_true"].to_numpy(dtype=int))
         y_prob = predict_majority(probability, len(val))
         threshold = find_best_threshold_f1(val["y_true"].to_numpy(dtype=int), y_prob)
@@ -405,25 +600,46 @@ def _evaluate_majority(prepared, config: ExperimentConfig, folds) -> tuple[dict[
         )
         prediction_frames.append(frame)
         metrics_rows.append(_metrics_row(frame, experiment=config.name, model="Majority", split="val", fold=fold.name, candidate="constant"))
+        reporter.log_step(
+            (config.name, "Majority", fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra=f"pr_auc={format_metric(metrics_rows[-1]['pr_auc'])}",
+        )
     chosen = {"candidate": "constant", "threshold": float(np.median(thresholds)), "probability": probability}
     return chosen, metrics_rows, prediction_frames
 
 
-def _evaluate_logistic(prepared, config: ExperimentConfig, folds) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+def _evaluate_logistic(prepared, config: ExperimentConfig, folds, *, reporter: ProgressReporter) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
     metrics_rows: list[dict[str, object]] = []
     by_candidate: dict[str, list[dict[str, object]]] = defaultdict(list)
     prediction_frames: list[pd.DataFrame] = []
 
-    for fold in folds:
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
         train = prepared.select_samples(fold.train_range)
         val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, "LogisticRegression", fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
         train_bundle = prepared.build_tabular_bundle(train, include_country=config.use_country_features)
         val_bundle = prepared.build_tabular_bundle(val, include_country=config.use_country_features)
         scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
         train_X = scaler.transform(train_bundle.X)
         val_X = scaler.transform(val_bundle.X)
         single_class_probability = _single_class_probability(train_bundle.y)
-        for candidate in LOGISTIC_CANDIDATES:
+        candidate_loop_started_at = reporter.now()
+        for candidate_index, candidate in enumerate(LOGISTIC_CANDIDATES, start=1):
+            candidate_started_at = reporter.now()
+            reporter.log(
+                (config.name, "LogisticRegression", fold.name),
+                f"candidate {candidate_index}/{len(LOGISTIC_CANDIDATES)} started | C={candidate}",
+            )
             if single_class_probability is not None:
                 y_prob = predict_majority(single_class_probability, len(val_bundle.y))
             else:
@@ -451,6 +667,25 @@ def _evaluate_logistic(prepared, config: ExperimentConfig, folds) -> tuple[dict[
             )
             metrics_rows.append(row)
             by_candidate[f"C={candidate}"].append(row | {"threshold": threshold})
+            reporter.log_step(
+                (config.name, "LogisticRegression", fold.name),
+                label="candidate",
+                index=candidate_index,
+                total=len(LOGISTIC_CANDIDATES),
+                loop_started_at=candidate_loop_started_at,
+                step_started_at=candidate_started_at,
+                extra=f"C={candidate} | pr_auc={format_metric(row['pr_auc'])}",
+            )
+
+        reporter.log_step(
+            (config.name, "LogisticRegression", fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra="candidate_search=done",
+        )
 
     chosen_key, chosen_rows = _pick_best_candidate(by_candidate)
     chosen = {
@@ -461,14 +696,20 @@ def _evaluate_logistic(prepared, config: ExperimentConfig, folds) -> tuple[dict[
     return chosen, metrics_rows, prediction_frames
 
 
-def _evaluate_xgboost(prepared, config: ExperimentConfig, folds) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+def _evaluate_xgboost(prepared, config: ExperimentConfig, folds, *, reporter: ProgressReporter) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
     metrics_rows: list[dict[str, object]] = []
     prediction_frames: list[pd.DataFrame] = []
     by_candidate: dict[str, list[dict[str, object]]] = defaultdict(list)
 
-    for fold in folds:
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
         train = prepared.select_samples(fold.train_range)
         val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, "XGBoost", fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
         train_bundle = prepared.build_tabular_bundle(train, include_country=config.use_country_features)
         val_bundle = prepared.build_tabular_bundle(val, include_country=config.use_country_features)
         scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
@@ -478,8 +719,14 @@ def _evaluate_xgboost(prepared, config: ExperimentConfig, folds) -> tuple[dict[s
         negatives = float(len(train_bundle.y) - positives)
         scale_pos_weight = negatives / max(positives, 1.0)
         single_class_probability = _single_class_probability(train_bundle.y)
-        for params in XGBOOST_CANDIDATES:
+        candidate_loop_started_at = reporter.now()
+        for candidate_index, params in enumerate(XGBOOST_CANDIDATES, start=1):
+            candidate_started_at = reporter.now()
             candidate_key = f"max_depth={params['max_depth']},lr={params['learning_rate']}"
+            reporter.log(
+                (config.name, "XGBoost", fold.name),
+                f"candidate {candidate_index}/{len(XGBOOST_CANDIDATES)} started | {candidate_key}",
+            )
             if single_class_probability is not None:
                 y_prob = predict_majority(single_class_probability, len(val_bundle.y))
                 best_iteration = 1
@@ -519,6 +766,25 @@ def _evaluate_xgboost(prepared, config: ExperimentConfig, folds) -> tuple[dict[s
             row["scale_pos_weight"] = scale_pos_weight
             metrics_rows.append(row)
             by_candidate[candidate_key].append(row | {"threshold": threshold})
+            reporter.log_step(
+                (config.name, "XGBoost", fold.name),
+                label="candidate",
+                index=candidate_index,
+                total=len(XGBOOST_CANDIDATES),
+                loop_started_at=candidate_loop_started_at,
+                step_started_at=candidate_started_at,
+                extra=f"{candidate_key} | pr_auc={format_metric(row['pr_auc'])}",
+            )
+
+        reporter.log_step(
+            (config.name, "XGBoost", fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra="candidate_search=done",
+        )
 
     chosen_key, chosen_rows = _pick_best_candidate(by_candidate)
     params = {
@@ -534,15 +800,28 @@ def _evaluate_xgboost(prepared, config: ExperimentConfig, folds) -> tuple[dict[s
     return chosen, metrics_rows, prediction_frames
 
 
-def _evaluate_sequence_model(prepared, config: ExperimentConfig, model_name: str, folds) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+def _evaluate_sequence_model(
+    prepared,
+    config: ExperimentConfig,
+    model_name: str,
+    folds,
+    *,
+    reporter: ProgressReporter,
+) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
     metrics_rows: list[dict[str, object]] = []
     prediction_frames: list[pd.DataFrame] = []
     thresholds: list[float] = []
     best_epochs: list[int] = []
 
-    for fold in folds:
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
         train = prepared.select_samples(fold.train_range)
         val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, model_name, fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
         scaler = prepared.fit_sequence_scaler(train)
         train_ds = prepared.build_sequence_dataset(train, scaler, include_country=config.use_country_features)
         val_ds = prepared.build_sequence_dataset(val, scaler, include_country=config.use_country_features)
@@ -551,6 +830,10 @@ def _evaluate_sequence_model(prepared, config: ExperimentConfig, model_name: str
         if single_class_probability is not None:
             y_prob = predict_majority(single_class_probability, len(val_ds))
             best_epoch = 1
+            reporter.log(
+                (config.name, model_name, fold.name),
+                "fold used single-class fallback",
+            )
         else:
             outcome = train_sequence_model(
                 model_name,
@@ -562,6 +845,8 @@ def _evaluate_sequence_model(prepared, config: ExperimentConfig, model_name: str
                 learning_rate=learning_rate,
                 max_epochs=30,
                 patience=5,
+                reporter=reporter,
+                progress_prefix=(config.name, model_name, fold.name),
             )
             fitted = load_sequence_model(
                 model_name,
@@ -589,6 +874,15 @@ def _evaluate_sequence_model(prepared, config: ExperimentConfig, model_name: str
         row = _metrics_row(frame, experiment=config.name, model=model_name, split="val", fold=fold.name, candidate="default")
         row["best_epoch"] = best_epoch
         metrics_rows.append(row)
+        reporter.log_step(
+            (config.name, model_name, fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra=f"best_epoch={best_epoch} | pr_auc={format_metric(row['pr_auc'])}",
+        )
 
     chosen = {
         "candidate": "default",
@@ -599,7 +893,16 @@ def _evaluate_sequence_model(prepared, config: ExperimentConfig, model_name: str
     return chosen, metrics_rows, prediction_frames
 
 
-def _fit_and_score_final_model(prepared, config, model_name, chosen, train_samples, test_samples) -> tuple[pd.DataFrame, dict[str, object]]:
+def _fit_and_score_final_model(
+    prepared,
+    config,
+    model_name,
+    chosen,
+    train_samples,
+    test_samples,
+    *,
+    reporter: ProgressReporter,
+) -> tuple[pd.DataFrame, dict[str, object]]:
     if model_name == "Majority":
         probability = fit_majority_baseline(train_samples["y_true"].to_numpy(dtype=int))
         y_prob = predict_majority(probability, len(test_samples))
@@ -677,6 +980,10 @@ def _fit_and_score_final_model(prepared, config, model_name, chosen, train_sampl
     single_class_probability = _single_class_probability(train_ds.metadata["y_true"].to_numpy(dtype=int))
     if single_class_probability is not None:
         y_prob = predict_majority(single_class_probability, len(test_ds))
+        reporter.log(
+            (config.name, model_name, "Final"),
+            "final stage used single-class fallback",
+        )
     else:
         fitted = fit_sequence_final(
             model_name,
@@ -686,6 +993,8 @@ def _fit_and_score_final_model(prepared, config, model_name, chosen, train_sampl
             random_seed=config.random_seed,
             learning_rate=chosen["learning_rate"],
             epochs=chosen["epochs"],
+            reporter=reporter,
+            progress_prefix=(config.name, model_name, "Final"),
         )
         y_prob = predict_sequence_model(fitted, test_ds)
     frame = _prediction_frame(

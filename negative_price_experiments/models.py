@@ -22,6 +22,7 @@ except ModuleNotFoundError:  # pragma: no cover - environment dependent
     DataLoader = None
 
 from .metrics import safe_average_precision
+from .progress import ProgressReporter, estimate_remaining_seconds, format_duration, format_metric, format_rate
 
 
 HAS_XGBOOST = xgb is not None
@@ -375,7 +376,10 @@ def train_sequence_model(
     max_epochs: int,
     patience: int,
     init_state_dict: dict[str, object] | None = None,
+    reporter: ProgressReporter | None = None,
+    progress_prefix: tuple[str, ...] = (),
 ) -> TorchTrainingOutcome:
+    reporter = reporter or ProgressReporter()
     require_torch()
     set_random_seed(random_seed)
     model = build_sequence_model(
@@ -391,6 +395,15 @@ def train_sequence_model(
     model.to(device)
     train_loader = _build_loader(train_dataset, batch_size=256, shuffle=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    train_started_at = reporter.now()
+    reporter.log(
+        progress_prefix,
+        (
+            f"sequence training start | model={model_name} | device={device.type} "
+            f"| train_samples={len(train_dataset)} | val_samples={len(val_dataset)} "
+            f"| batches={len(train_loader)} | max_epochs={max_epochs}"
+        ),
+    )
 
     train_y = train_dataset.metadata["y_true"].to_numpy(dtype=np.float32)
     positives = float(train_y.sum())
@@ -404,13 +417,19 @@ def train_sequence_model(
     epochs_without_improvement = 0
 
     for epoch in range(1, max_epochs + 1):
+        epoch_started_at = reporter.now()
         model.train()
+        epoch_loss_sum = 0.0
+        epoch_sample_count = 0
         for batch in train_loader:
             optimizer.zero_grad()
             logits = model(batch["x"].to(device), batch["country_idx"].to(device))
             loss = loss_fn(logits, batch["y"].to(device))
             loss.backward()
             optimizer.step()
+            batch_size = int(batch["y"].shape[0])
+            epoch_loss_sum += float(loss.item()) * batch_size
+            epoch_sample_count += batch_size
 
         val_prob = _predict_with_model(model, val_dataset)
         val_y = val_dataset.metadata["y_true"].to_numpy(dtype=np.int8)
@@ -423,8 +442,39 @@ def train_sequence_model(
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
-            if epochs_without_improvement >= patience:
-                break
+        best_score_display = float("nan") if best_score == float("-inf") else best_score
+        epoch_elapsed = reporter.now() - epoch_started_at
+        total_elapsed = reporter.now() - train_started_at
+        reporter.log(
+            progress_prefix,
+            (
+                f"epoch {epoch}/{max_epochs} | train_loss={epoch_loss_sum / max(epoch_sample_count, 1):.4f} "
+                f"| val_pr_auc={format_metric(score)} | best_epoch={best_epoch} "
+                f"| best_pr_auc={format_metric(best_score_display)} "
+                f"| epoch={format_duration(epoch_elapsed)} | elapsed={format_duration(total_elapsed)} "
+                f"| speed={format_rate(epoch_sample_count, epoch_elapsed)} "
+                f"| eta={format_duration(estimate_remaining_seconds(loop_started_at=train_started_at, completed_steps=epoch, total_steps=max_epochs, now=reporter.now()))}"
+            ),
+        )
+        if epochs_without_improvement >= patience:
+            reporter.log(
+                progress_prefix,
+                (
+                    f"early stopping triggered | epoch={epoch}/{max_epochs} | patience={patience} "
+                    f"| best_epoch={best_epoch} | best_pr_auc={format_metric(best_score_display)}"
+                ),
+            )
+            break
+
+    final_best_score = float("nan") if best_score == float("-inf") else best_score
+    reporter.log(
+        progress_prefix,
+        (
+            f"sequence training completed | best_epoch={best_epoch} "
+            f"| best_pr_auc={format_metric(final_best_score)} "
+            f"| elapsed={format_duration(reporter.now() - train_started_at)}"
+        ),
+    )
 
     return TorchTrainingOutcome(state_dict=best_state, best_epoch=best_epoch, best_score=best_score)
 
@@ -439,7 +489,10 @@ def fit_sequence_final(
     learning_rate: float,
     epochs: int,
     init_state_dict: dict[str, object] | None = None,
+    reporter: ProgressReporter | None = None,
+    progress_prefix: tuple[str, ...] = (),
 ) -> nn.Module:
+    reporter = reporter or ProgressReporter()
     require_torch()
     set_random_seed(random_seed)
     model = build_sequence_model(
@@ -454,6 +507,14 @@ def fit_sequence_final(
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     train_loader = _build_loader(train_dataset, batch_size=256, shuffle=True)
+    train_started_at = reporter.now()
+    reporter.log(
+        progress_prefix,
+        (
+            f"final training start | model={model_name} | device={device.type} "
+            f"| train_samples={len(train_dataset)} | batches={len(train_loader)} | epochs={max(epochs, 1)}"
+        ),
+    )
 
     train_y = train_dataset.metadata["y_true"].to_numpy(dtype=np.float32)
     positives = float(train_y.sum())
@@ -461,14 +522,36 @@ def fit_sequence_final(
     pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32, device=device)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    for _ in range(max(epochs, 1)):
+    total_epochs = max(epochs, 1)
+    for epoch in range(1, total_epochs + 1):
+        epoch_started_at = reporter.now()
         model.train()
+        epoch_loss_sum = 0.0
+        epoch_sample_count = 0
         for batch in train_loader:
             optimizer.zero_grad()
             logits = model(batch["x"].to(device), batch["country_idx"].to(device))
             loss = loss_fn(logits, batch["y"].to(device))
             loss.backward()
             optimizer.step()
+            batch_size = int(batch["y"].shape[0])
+            epoch_loss_sum += float(loss.item()) * batch_size
+            epoch_sample_count += batch_size
+        epoch_elapsed = reporter.now() - epoch_started_at
+        reporter.log(
+            progress_prefix,
+            (
+                f"epoch {epoch}/{total_epochs} | train_loss={epoch_loss_sum / max(epoch_sample_count, 1):.4f} "
+                f"| epoch={format_duration(epoch_elapsed)} "
+                f"| elapsed={format_duration(reporter.now() - train_started_at)} "
+                f"| speed={format_rate(epoch_sample_count, epoch_elapsed)} "
+                f"| eta={format_duration(estimate_remaining_seconds(loop_started_at=train_started_at, completed_steps=epoch, total_steps=total_epochs, now=reporter.now()))}"
+            ),
+        )
+    reporter.log(
+        progress_prefix,
+        f"final training completed | elapsed={format_duration(reporter.now() - train_started_at)}",
+    )
     return model
 
 
