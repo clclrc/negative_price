@@ -21,13 +21,15 @@ class NumericScaler:
 
     @classmethod
     def fit(cls, values: np.ndarray, feature_names: tuple[str, ...]) -> "NumericScaler":
-        mean_ = values.mean(axis=0)
-        scale_ = values.std(axis=0)
-        scale_[scale_ == 0] = 1.0
+        mean_ = np.nanmean(values, axis=0)
+        scale_ = np.nanstd(values, axis=0)
+        mean_ = np.where(np.isnan(mean_), 0.0, mean_)
+        scale_ = np.where((scale_ == 0) | np.isnan(scale_), 1.0, scale_)
         return cls(feature_names=feature_names, mean_=mean_.astype(np.float32), scale_=scale_.astype(np.float32))
 
     def transform(self, values: np.ndarray) -> np.ndarray:
-        return ((values - self.mean_) / self.scale_).astype(np.float32)
+        transformed = (values - self.mean_) / self.scale_
+        return np.nan_to_num(transformed, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
 
 
 @dataclass(frozen=True)

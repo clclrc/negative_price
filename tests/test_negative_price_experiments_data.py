@@ -4,10 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from negative_price_experiments.config import ExperimentConfig, TimeRange, utc_ts
-from negative_price_experiments.data import prepare_experiment_data
+from negative_price_experiments.data import NumericScaler, prepare_experiment_data
 
 
 def build_toy_frame(*, periods: int = 16, country: str = "AT") -> pd.DataFrame:
@@ -94,3 +95,20 @@ class NegativePriceDataPrepTest(unittest.TestCase):
 
         self.assertNotIn(utc_ts("2024-01-01 10:00:00"), set(target_times))
         self.assertFalse(((target_times >= utc_ts("2024-01-01 08:00:00")) & (target_times <= utc_ts("2024-01-01 09:00:00"))).any())
+
+    def test_numeric_scaler_ignores_nan_history_and_outputs_finite_values(self) -> None:
+        values = np.asarray(
+            [
+                [1.0, 10.0],
+                [2.0, np.nan],
+                [3.0, 30.0],
+            ],
+            dtype=np.float32,
+        )
+        scaler = NumericScaler.fit(values, ("a", "b"))
+
+        transformed = scaler.transform(np.asarray([[2.0, 20.0], [np.nan, 20.0]], dtype=np.float32))
+
+        np.testing.assert_allclose(scaler.mean_, np.asarray([2.0, 20.0], dtype=np.float32))
+        np.testing.assert_allclose(scaler.scale_, np.asarray([0.8164966, 10.0], dtype=np.float32), rtol=1e-5)
+        self.assertTrue(np.isfinite(transformed).all())
