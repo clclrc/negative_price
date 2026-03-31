@@ -1,0 +1,35 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Local experiment outputs
+experiment_outputs/
+*.log
+
+# Large local caches
+entsoe_2024_2025_cache/
+backups_missing_refresh_20260329/
+
+# Optional local artifacts
+*.tmp
+*.bak
