@@ -23,6 +23,7 @@ except ModuleNotFoundError:  # pragma: no cover - environment dependent
 
 from .metrics import safe_average_precision
 from .progress import ProgressReporter, estimate_remaining_seconds, format_duration, format_metric, format_rate
+from .runtime import get_cpu_worker_count
 
 
 HAS_XGBOOST = xgb is not None
@@ -131,6 +132,7 @@ def fit_xgboost_classifier(
         eval_metric="aucpr",
         tree_method="hist",
         device=get_xgboost_device(),
+        n_jobs=get_cpu_worker_count(max_workers=8),
         max_depth=max_depth,
         learning_rate=learning_rate,
         subsample=0.8,
@@ -163,6 +165,7 @@ def fit_xgboost_final(
         eval_metric="aucpr",
         tree_method="hist",
         device=get_xgboost_device(),
+        n_jobs=get_cpu_worker_count(max_workers=8),
         max_depth=max_depth,
         learning_rate=learning_rate,
         subsample=0.8,
@@ -348,10 +351,17 @@ def _build_loader(dataset, *, batch_size: int, shuffle: bool) -> DataLoader:
     )
 
 
+def _configure_torch_cpu_threads(device: "torch.device") -> None:
+    if device.type != "cpu":
+        return
+    torch.set_num_threads(get_cpu_worker_count(max_workers=8))
+
+
 def _predict_with_model(model: nn.Module, dataset) -> np.ndarray:
     require_torch()
     loader = _build_loader(dataset, batch_size=256, shuffle=False)
     device = get_preferred_torch_device()
+    _configure_torch_cpu_threads(device)
     model.to(device)
     model.eval()
     probs: list[np.ndarray] = []
@@ -392,6 +402,7 @@ def train_sequence_model(
         model.load_state_dict(init_state_dict)
 
     device = get_preferred_torch_device()
+    _configure_torch_cpu_threads(device)
     model.to(device)
     train_loader = _build_loader(train_dataset, batch_size=256, shuffle=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -504,6 +515,7 @@ def fit_sequence_final(
     if init_state_dict is not None:
         model.load_state_dict(init_state_dict)
     device = get_preferred_torch_device()
+    _configure_torch_cpu_threads(device)
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     train_loader = _build_loader(train_dataset, batch_size=256, shuffle=True)

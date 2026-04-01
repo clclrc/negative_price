@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from .config import ALL_REQUIRED_BASE_COLUMNS, CALENDAR_CONTEXT_FEATURES, ExperimentConfig
+from .runtime import get_parallel_worker_count
 
 
 MASK_SUFFIX = "__missing"
@@ -156,44 +158,20 @@ class PreparedExperimentData:
         feature_names, continuous_indices = self._tabular_feature_spec(include_country=include_country)
         X = np.zeros((len(samples), len(feature_names)), dtype=np.float32)
         y = samples["y_true"].to_numpy(dtype=np.int8)
-
-        for row_idx, row in enumerate(samples.itertuples(index=False)):
-            panel = self.country_panels[row.country]
-            anchor_idx = int(row.anchor_index)
-            window_slice = slice(anchor_idx - self.config.window_hours + 1, anchor_idx + 1)
-            numeric_window = panel.numeric_values[window_slice]
-            mask_window = panel.missing_masks[window_slice]
-            context_last = panel.context_values[anchor_idx]
-
-            values: list[float] = []
-            for feature_idx in range(len(self.numeric_features)):
-                series = numeric_window[:, feature_idx]
-                for lag in TABULAR_LAG_STEPS:
-                    lag_index = max(len(series) - 1 - lag, 0)
-                    values.append(float(series[lag_index]))
-                for window in TABULAR_WINDOW_STEPS:
-                    start = max(len(series) - window, 0)
-                    slice_values = series[start:]
-                    values.extend(
-                        [
-                            float(slice_values.mean()),
-                            float(slice_values.std(ddof=0)),
-                            float(slice_values.min()),
-                            float(slice_values.max()),
-                        ]
-                    )
-
-            for feature_idx in range(len(self.numeric_features)):
-                series = mask_window[:, feature_idx]
-                for window in TABULAR_WINDOW_STEPS:
-                    start = max(len(series) - window, 0)
-                    values.append(float(series[start:].mean()))
-
-            values.extend(float(item) for item in context_last.tolist())
-            if include_country:
-                for country in self.config.countries:
-                    values.append(1.0 if country == row.country else 0.0)
-            X[row_idx] = np.asarray(values, dtype=np.float32)
+        rows = list(samples.itertuples(index=False))
+        worker_count = get_parallel_worker_count(len(rows), max_workers=8, min_items_per_worker=512)
+        if worker_count <= 1:
+            for row_idx, row in enumerate(rows):
+                X[row_idx] = _build_tabular_row_values(self, row, include_country=include_country)
+        else:
+            chunk_size = max((len(rows) + worker_count - 1) // worker_count, 1)
+            chunk_args = [
+                (chunk_start, rows[chunk_start : chunk_start + chunk_size], self, include_country)
+                for chunk_start in range(0, len(rows), chunk_size)
+            ]
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                for chunk_start, chunk_values in executor.map(_build_tabular_chunk, chunk_args):
+                    X[chunk_start : chunk_start + len(chunk_values)] = chunk_values
 
         return TabularBundle(
             X=X,
@@ -256,20 +234,16 @@ def prepare_experiment_data(config: ExperimentConfig) -> PreparedExperimentData:
         df.groupby("country", sort=False)[list(config.numeric_features)].transform(lambda group: group.ffill(limit=config.ffill_limit))
     )
 
-    country_panels: dict[str, CountryPanel] = {}
-    manifest_frames: list[pd.DataFrame] = []
-    for country, group in df.groupby("country", sort=False):
-        group = group.reset_index(drop=True)
-        panel = CountryPanel(
-            country=country,
-            times=group["time"].to_numpy(),
-            numeric_values=group[list(config.numeric_features)].to_numpy(dtype=np.float32),
-            original_price=group["_original_price"].to_numpy(dtype=np.float32),
-            missing_masks=group[[f"{feature}{MASK_SUFFIX}" for feature in config.numeric_features]].to_numpy(dtype=np.float32),
-            context_values=group[list(CALENDAR_CONTEXT_FEATURES)].to_numpy(dtype=np.float32),
-        )
-        country_panels[country] = panel
-        manifest_frames.append(_build_sample_manifest_for_country(config, panel))
+    grouped = [(country, group.reset_index(drop=True)) for country, group in df.groupby("country", sort=False)]
+    worker_count = get_parallel_worker_count(len(grouped), max_workers=8, min_items_per_worker=2)
+    if worker_count <= 1:
+        panel_results = [_build_country_panel_and_manifest(config, country, group) for country, group in grouped]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            panel_results = list(executor.map(lambda item: _build_country_panel_and_manifest(config, item[0], item[1]), grouped))
+
+    country_panels = {panel.country: panel for panel, _ in panel_results}
+    manifest_frames = [manifest for _, manifest in panel_results]
 
     sample_manifest = pd.concat(manifest_frames, ignore_index=True)
     sample_manifest.sort_values(["country", "target_time"], inplace=True)
@@ -293,6 +267,74 @@ def _add_time_context(df: pd.DataFrame) -> None:
     df["cos_month"] = np.cos(2 * np.pi * (month - 1) / 12).astype(np.float32)
     df["is_weekend_local"] = df["is_weekend_local"].astype(np.float32)
     df["is_holiday_local"] = df["is_holiday_local"].astype(np.float32)
+
+
+def _build_country_panel_and_manifest(
+    config: ExperimentConfig,
+    country: str,
+    group: pd.DataFrame,
+) -> tuple[CountryPanel, pd.DataFrame]:
+    panel = CountryPanel(
+        country=country,
+        times=group["time"].to_numpy(),
+        numeric_values=group[list(config.numeric_features)].to_numpy(dtype=np.float32),
+        original_price=group["_original_price"].to_numpy(dtype=np.float32),
+        missing_masks=group[[f"{feature}{MASK_SUFFIX}" for feature in config.numeric_features]].to_numpy(dtype=np.float32),
+        context_values=group[list(CALENDAR_CONTEXT_FEATURES)].to_numpy(dtype=np.float32),
+    )
+    return panel, _build_sample_manifest_for_country(config, panel)
+
+
+def _build_tabular_chunk(args) -> tuple[int, np.ndarray]:
+    chunk_start, rows, prepared, include_country = args
+    chunk_values = np.zeros((len(rows), len(prepared._tabular_feature_spec(include_country=include_country)[0])), dtype=np.float32)
+    for offset, row in enumerate(rows):
+        chunk_values[offset] = _build_tabular_row_values(prepared, row, include_country=include_country)
+    return chunk_start, chunk_values
+
+
+def _build_tabular_row_values(
+    prepared: PreparedExperimentData,
+    row,
+    *,
+    include_country: bool,
+) -> np.ndarray:
+    panel = prepared.country_panels[row.country]
+    anchor_idx = int(row.anchor_index)
+    window_slice = slice(anchor_idx - prepared.config.window_hours + 1, anchor_idx + 1)
+    numeric_window = panel.numeric_values[window_slice]
+    mask_window = panel.missing_masks[window_slice]
+    context_last = panel.context_values[anchor_idx]
+
+    values: list[float] = []
+    for feature_idx in range(len(prepared.numeric_features)):
+        series = numeric_window[:, feature_idx]
+        for lag in TABULAR_LAG_STEPS:
+            lag_index = max(len(series) - 1 - lag, 0)
+            values.append(float(series[lag_index]))
+        for window in TABULAR_WINDOW_STEPS:
+            start = max(len(series) - window, 0)
+            slice_values = series[start:]
+            values.extend(
+                [
+                    float(slice_values.mean()),
+                    float(slice_values.std(ddof=0)),
+                    float(slice_values.min()),
+                    float(slice_values.max()),
+                ]
+            )
+
+    for feature_idx in range(len(prepared.numeric_features)):
+        series = mask_window[:, feature_idx]
+        for window in TABULAR_WINDOW_STEPS:
+            start = max(len(series) - window, 0)
+            values.append(float(series[start:].mean()))
+
+    values.extend(float(item) for item in context_last.tolist())
+    if include_country:
+        for country in prepared.config.countries:
+            values.append(1.0 if country == row.country else 0.0)
+    return np.asarray(values, dtype=np.float32)
 
 
 def _build_sample_manifest_for_country(config: ExperimentConfig, panel: CountryPanel) -> pd.DataFrame:

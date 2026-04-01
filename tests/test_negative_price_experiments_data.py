@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -112,3 +113,31 @@ class NegativePriceDataPrepTest(unittest.TestCase):
         np.testing.assert_allclose(scaler.mean_, np.asarray([2.0, 20.0], dtype=np.float32))
         np.testing.assert_allclose(scaler.scale_, np.asarray([0.8164966, 10.0], dtype=np.float32), rtol=1e-5)
         self.assertTrue(np.isfinite(transformed).all())
+
+    def test_parallel_tabular_bundle_matches_serial_output(self) -> None:
+        df = pd.concat([build_toy_frame(periods=24, country="AT"), build_toy_frame(periods=24, country="BE")], ignore_index=True)
+        path = self.write_frame(df)
+        config = ExperimentConfig(
+            name="TEST",
+            data_path=path,
+            countries=("AT", "BE"),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("Majority",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+        )
+
+        prepared = prepare_experiment_data(config)
+        samples = prepared.sample_manifest.head(12).copy()
+
+        with patch("negative_price_experiments.data.get_parallel_worker_count", return_value=1):
+            serial_bundle = prepared.build_tabular_bundle(samples, include_country=True)
+        with patch("negative_price_experiments.data.get_parallel_worker_count", return_value=2):
+            parallel_bundle = prepared.build_tabular_bundle(samples, include_country=True)
+
+        np.testing.assert_allclose(serial_bundle.X, parallel_bundle.X)
+        np.testing.assert_array_equal(serial_bundle.y, parallel_bundle.y)
