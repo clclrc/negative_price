@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from negative_price_experiments.progress import ProgressReporter, format_duration, format_metric
 
@@ -36,3 +38,12 @@ class NegativePriceProgressTest(unittest.TestCase):
                 "[E1][GRU][F1] fold 2/4 completed | step=2.0s | elapsed=10.0s | eta=10.0s | pr_auc=0.5000",
             ],
         )
+
+    def test_with_log_file_writes_lines_to_disk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "progress.log"
+            reporter = ProgressReporter(print_fn=lambda _: None).with_log_file(log_path)
+
+            reporter.log(("E1",), "started")
+
+            self.assertEqual(log_path.read_text(encoding="utf-8"), "[E1] started\n")

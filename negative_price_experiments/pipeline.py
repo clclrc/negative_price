@@ -55,13 +55,19 @@ def run_experiment(
     skip_unavailable_models: bool = False,
     reporter: ProgressReporter | None = None,
 ) -> dict[str, Path]:
-    reporter = reporter or ProgressReporter()
     output_path = Path(output_dir).resolve() / config.name
     output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
     folds = tuple(folds or WALK_FORWARD_FOLDS)
     final_train_range = final_train_range or FINAL_TRAIN_RANGE
     final_test_range = final_test_range or FINAL_TEST_RANGE
 
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (config.name,),
+        f"experiment started | data={config.data_path} | output={output_path}",
+    )
     prep_started_at = reporter.now()
     reporter.log((config.name,), "data prep started")
     prepared = prepare_experiment_data(config)
@@ -180,10 +186,19 @@ def run_experiment(
         )
         monthly_metrics.to_csv(output_path / "monthly_metrics.csv", index=False)
 
+    reporter.log(
+        (config.name,),
+        (
+            f"experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
+            f"| artifacts={output_path}"
+        ),
+    )
+
     return {
         "sample_manifest": output_path / "sample_manifest.csv",
         "metrics_summary": output_path / "metrics_summary.csv",
         "predictions": output_path / "predictions.csv",
+        "progress_log": progress_log,
     }
 
 
@@ -193,10 +208,16 @@ def run_transfer_experiment(
     output_dir: str | Path,
     reporter: ProgressReporter | None = None,
 ) -> dict[str, Path]:
-    reporter = reporter or ProgressReporter()
     require_torch()
     output_path = Path(output_dir).resolve() / transfer_config.name
     output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (transfer_config.name,),
+        f"experiment started | data={transfer_config.data_path} | output={output_path}",
+    )
 
     config = ExperimentConfig(
         name="E6_public_gru",
@@ -545,10 +566,19 @@ def run_transfer_experiment(
             group_cols=["experiment", "model", "protocol", "month"],
         ).to_csv(output_path / "monthly_metrics.csv", index=False)
 
+    reporter.log(
+        (transfer_config.name,),
+        (
+            f"experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
+            f"| artifacts={output_path}"
+        ),
+    )
+
     return {
         "sample_manifest": output_path / "sample_manifest.csv",
         "metrics_summary": output_path / "metrics_summary.csv",
         "predictions": output_path / "predictions.csv",
+        "progress_log": progress_log,
     }
 
 

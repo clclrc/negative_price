@@ -122,14 +122,20 @@ class NegativePriceRunnerTest(unittest.TestCase):
             self.assertTrue(all(path.exists() for path in artifacts.values()))
             metrics = pd.read_csv(artifacts["metrics_summary"])
             predictions = pd.read_csv(artifacts["predictions"])
+            progress_log = Path(artifacts["progress_log"])
             self.assertIn("model", metrics.columns)
             self.assertIn("y_prob", predictions.columns)
             self.assertIn("Majority", set(metrics["model"]))
             self.assertIn("LogisticRegression", set(metrics["model"]))
+            self.assertTrue(progress_log.exists())
             output = stdout.getvalue()
+            log_output = progress_log.read_text(encoding="utf-8")
             self.assertIn("[SMOKE] data prep started", output)
             self.assertIn("[SMOKE][Majority][F1] fold 1/2 completed", output)
             self.assertIn("[SMOKE][LogisticRegression] final stage 2/2 completed", output)
+            self.assertIn("[SMOKE] experiment started", log_output)
+            self.assertIn("[SMOKE][Majority][F1] fold 1/2 completed", log_output)
+            self.assertIn("[SMOKE] experiment completed", log_output)
 
     def test_skip_unavailable_models_keeps_tabular_run_alive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -175,6 +181,7 @@ class NegativePriceRunnerTest(unittest.TestCase):
             if HAS_TORCH:
                 expected_models.add("GRU")
             self.assertEqual(set(metrics["model"]), expected_models)
+            self.assertTrue(Path(artifacts["progress_log"]).exists())
 
     @unittest.skipUnless(HAS_TORCH, "torch is required for sequence progress tests")
     def test_sequence_run_prints_epoch_level_progress(self) -> None:
@@ -207,7 +214,7 @@ class NegativePriceRunnerTest(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                run_experiment(
+                artifacts = run_experiment(
                     config,
                     output_dir=out_dir,
                     folds=folds,
@@ -216,10 +223,13 @@ class NegativePriceRunnerTest(unittest.TestCase):
                 )
 
             output = stdout.getvalue()
+            log_output = Path(artifacts["progress_log"]).read_text(encoding="utf-8")
             self.assertIn("[SEQ][GRU][F1] sequence training start", output)
             self.assertIn("[SEQ][GRU][F1] epoch 1/", output)
             self.assertIn("[SEQ][GRU][Final] final training start", output)
             self.assertIn("[SEQ][GRU][Final] epoch 1/", output)
+            self.assertIn("[SEQ][GRU][F1] sequence training start", log_output)
+            self.assertIn("[SEQ][GRU][Final] final training completed", log_output)
 
     def test_transfer_run_prints_country_budget_and_protocol_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -271,8 +281,12 @@ class NegativePriceRunnerTest(unittest.TestCase):
 
             self.assertTrue(all(path.exists() for path in artifacts.values()))
             output = stdout.getvalue()
+            log_output = Path(artifacts["progress_log"]).read_text(encoding="utf-8")
             self.assertIn("[E6TEST][SourcePretrain] source pretraining started", output)
             self.assertIn("[E6TEST][BG][ZeroShot] evaluation completed", output)
             self.assertIn("[E6TEST][BG][B24][TargetOnly] evaluation started", output)
             self.assertIn("[E6TEST][BG][B24][TransferFineTune] evaluation completed", output)
             self.assertIn("[E6TEST][BG] country 1/1 completed", output)
+            self.assertIn("[E6TEST] experiment started", log_output)
+            self.assertIn("[E6TEST][SourcePretrain] source pretraining started", log_output)
+            self.assertIn("[E6TEST] experiment completed", log_output)

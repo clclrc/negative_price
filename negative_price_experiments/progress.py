@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import isfinite
+from pathlib import Path
 from time import monotonic
 from typing import Callable, Sequence
 
@@ -52,23 +53,45 @@ class ProgressReporter:
         *,
         time_fn: Callable[[], float] = monotonic,
         print_fn: Callable[[str], None] | None = None,
+        print_fns: Sequence[Callable[[str], None]] | None = None,
     ) -> None:
         self._time_fn = time_fn
-        self._print_fn = print_fn or self._default_print
+        sinks = tuple(print_fns or ())
+        if print_fn is not None:
+            sinks = sinks + (print_fn,)
+        if not sinks:
+            sinks = (self._default_print,)
+        self._print_fns = sinks
 
     @staticmethod
     def _default_print(line: str) -> None:
         print(line, flush=True)
 
+    @staticmethod
+    def _file_sink(path: str | Path) -> Callable[[str], None]:
+        resolved = Path(path).resolve()
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+
+        def sink(line: str) -> None:
+            with resolved.open("a", encoding="utf-8") as handle:
+                handle.write(f"{line}\n")
+
+        return sink
+
     def now(self) -> float:
         return float(self._time_fn())
 
+    def with_sink(self, sink: Callable[[str], None]) -> "ProgressReporter":
+        return ProgressReporter(time_fn=self._time_fn, print_fns=self._print_fns + (sink,))
+
+    def with_log_file(self, path: str | Path) -> "ProgressReporter":
+        return self.with_sink(self._file_sink(path))
+
     def log(self, prefix: Sequence[str], message: str) -> None:
         line_prefix = format_prefix(prefix)
-        if line_prefix:
-            self._print_fn(f"{line_prefix} {message}")
-            return
-        self._print_fn(message)
+        line = f"{line_prefix} {message}" if line_prefix else message
+        for sink in self._print_fns:
+            sink(line)
 
     def log_step(
         self,
