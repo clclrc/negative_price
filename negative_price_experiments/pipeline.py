@@ -10,7 +10,6 @@ from .config import (
     DEFAULT_MODELS,
     FINAL_TEST_RANGE,
     FINAL_TRAIN_RANGE,
-    TABULAR_MODELS,
     WALK_FORWARD_FOLDS,
     AdaptBudget,
     ExperimentConfig,
@@ -20,12 +19,18 @@ from .data import TabularScaler, prepare_experiment_data
 from .metrics import add_month_column, compute_binary_metrics, find_best_threshold_f1, summarize_prediction_frame
 from .models import (
     DependencyUnavailableError,
+    apply_probability_calibrator,
     fit_logistic_regression,
+    fit_lightgbm_classifier,
     fit_majority_baseline,
+    fit_catboost_classifier,
+    fit_probability_calibrator,
     fit_sequence_final,
     fit_xgboost_classifier,
     fit_xgboost_final,
     load_sequence_model,
+    predict_catboost,
+    predict_lightgbm,
     predict_logistic_regression,
     predict_majority,
     predict_sequence_model,
@@ -42,6 +47,24 @@ XGBOOST_CANDIDATES = (
     {"max_depth": 4, "learning_rate": 0.1},
     {"max_depth": 6, "learning_rate": 0.05},
     {"max_depth": 6, "learning_rate": 0.1},
+)
+LIGHTGBM_CANDIDATES = (
+    {"num_leaves": 31, "learning_rate": 0.05, "n_estimators": 300},
+    {"num_leaves": 31, "learning_rate": 0.1, "n_estimators": 200},
+    {"num_leaves": 63, "learning_rate": 0.05, "n_estimators": 400},
+    {"num_leaves": 63, "learning_rate": 0.1, "n_estimators": 250},
+)
+CATBOOST_CANDIDATES = (
+    {"depth": 6, "learning_rate": 0.05, "n_estimators": 300},
+    {"depth": 6, "learning_rate": 0.1, "n_estimators": 200},
+    {"depth": 8, "learning_rate": 0.05, "n_estimators": 400},
+    {"depth": 8, "learning_rate": 0.1, "n_estimators": 250},
+)
+XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES = (
+    {"max_depth": 4, "learning_rate": 0.05, "n_estimators": 300, "calibration": "sigmoid"},
+    {"max_depth": 4, "learning_rate": 0.1, "n_estimators": 200, "calibration": "sigmoid"},
+    {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 400, "calibration": "isotonic"},
+    {"max_depth": 6, "learning_rate": 0.1, "n_estimators": 250, "calibration": "isotonic"},
 )
 
 
@@ -596,7 +619,13 @@ def _evaluate_model_across_folds(
         return _evaluate_logistic(prepared, config, folds, reporter=reporter)
     if model_name == "XGBoost":
         return _evaluate_xgboost(prepared, config, folds, reporter=reporter)
-    if model_name in ("GRU", "TCN"):
+    if model_name == "LightGBM":
+        return _evaluate_lightgbm(prepared, config, folds, reporter=reporter)
+    if model_name == "CatBoost":
+        return _evaluate_catboost(prepared, config, folds, reporter=reporter)
+    if model_name == "XGBoostWeightedCalibrated":
+        return _evaluate_xgboost_weighted_calibrated(prepared, config, folds, reporter=reporter)
+    if model_name in ("GRU", "TCN", "PatchTST"):
         return _evaluate_sequence_model(prepared, config, model_name, folds, reporter=reporter)
     raise ValueError(f"Unsupported model: {model_name}")
 
@@ -830,6 +859,399 @@ def _evaluate_xgboost(prepared, config: ExperimentConfig, folds, *, reporter: Pr
     return chosen, metrics_rows, prediction_frames
 
 
+def _scale_pos_weight(y: np.ndarray) -> float:
+    positives = float(y.sum())
+    negatives = float(len(y) - positives)
+    return negatives / max(positives, 1.0)
+
+
+def _split_samples_for_calibration(
+    samples: pd.DataFrame,
+    *,
+    calibration_fraction: float = 0.2,
+    min_calibration_samples: int = 128,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ordered = samples.sort_values(["target_time", "country", "anchor_time"], kind="mergesort").reset_index(drop=True)
+    if len(ordered) < max(min_calibration_samples * 2, 2):
+        return ordered, ordered.iloc[0:0].copy()
+    calibration_size = max(int(round(len(ordered) * calibration_fraction)), min_calibration_samples)
+    calibration_size = min(calibration_size, len(ordered) - 1)
+    split_idx = len(ordered) - calibration_size
+    return ordered.iloc[:split_idx].copy(), ordered.iloc[split_idx:].copy()
+
+
+def _predict_weighted_calibrated_xgboost(
+    prepared,
+    config: ExperimentConfig,
+    train_samples: pd.DataFrame,
+    predict_samples: pd.DataFrame,
+    *,
+    max_depth: int,
+    learning_rate: float,
+    n_estimators: int,
+    calibration: str,
+) -> tuple[pd.DataFrame, np.ndarray, dict[str, object]]:
+    full_train_bundle = prepared.build_tabular_bundle(train_samples, include_country=config.use_country_features)
+    predict_bundle = prepared.build_tabular_bundle(predict_samples, include_country=config.use_country_features)
+    single_class_probability = _single_class_probability(full_train_bundle.y)
+    if single_class_probability is not None:
+        return predict_bundle.metadata, predict_majority(single_class_probability, len(predict_bundle.y)), {
+            "calibration": "identity",
+            "scale_pos_weight": float("nan"),
+        }
+
+    base_train_samples, calibration_samples = _split_samples_for_calibration(train_samples)
+    if calibration_samples.empty or calibration_samples["y_true"].nunique() < 2:
+        scaler = TabularScaler(full_train_bundle.continuous_indices).fit(full_train_bundle.X)
+        train_X = scaler.transform(full_train_bundle.X)
+        predict_X = scaler.transform(predict_bundle.X)
+        model = fit_xgboost_final(
+            train_X,
+            full_train_bundle.y,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            n_estimators=n_estimators,
+            scale_pos_weight=_scale_pos_weight(full_train_bundle.y),
+            seed=config.random_seed,
+        )
+        return predict_bundle.metadata, predict_xgboost(model, predict_X), {
+            "calibration": "identity",
+            "scale_pos_weight": _scale_pos_weight(full_train_bundle.y),
+        }
+
+    base_bundle = prepared.build_tabular_bundle(base_train_samples, include_country=config.use_country_features)
+    calibration_bundle = prepared.build_tabular_bundle(calibration_samples, include_country=config.use_country_features)
+    if _single_class_probability(base_bundle.y) is not None:
+        scaler = TabularScaler(full_train_bundle.continuous_indices).fit(full_train_bundle.X)
+        train_X = scaler.transform(full_train_bundle.X)
+        predict_X = scaler.transform(predict_bundle.X)
+        model = fit_xgboost_final(
+            train_X,
+            full_train_bundle.y,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            n_estimators=n_estimators,
+            scale_pos_weight=_scale_pos_weight(full_train_bundle.y),
+            seed=config.random_seed,
+        )
+        return predict_bundle.metadata, predict_xgboost(model, predict_X), {
+            "calibration": "identity",
+            "scale_pos_weight": _scale_pos_weight(full_train_bundle.y),
+        }
+    scaler = TabularScaler(base_bundle.continuous_indices).fit(base_bundle.X)
+    base_X = scaler.transform(base_bundle.X)
+    calibration_X = scaler.transform(calibration_bundle.X)
+    predict_X = scaler.transform(predict_bundle.X)
+    scale_pos_weight = _scale_pos_weight(base_bundle.y)
+    model = fit_xgboost_final(
+        base_X,
+        base_bundle.y,
+        max_depth=max_depth,
+        learning_rate=learning_rate,
+        n_estimators=n_estimators,
+        scale_pos_weight=scale_pos_weight,
+        seed=config.random_seed,
+    )
+    calibration_raw = predict_xgboost(model, calibration_X)
+    calibrator = fit_probability_calibrator(calibration_bundle.y, calibration_raw, method=calibration)
+    predict_raw = predict_xgboost(model, predict_X)
+    return predict_bundle.metadata, apply_probability_calibrator(calibrator, predict_raw), {
+        "calibration": calibrator.method,
+        "scale_pos_weight": scale_pos_weight,
+    }
+
+
+def _evaluate_lightgbm(prepared, config: ExperimentConfig, folds, *, reporter: ProgressReporter) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+    metrics_rows: list[dict[str, object]] = []
+    prediction_frames: list[pd.DataFrame] = []
+    by_candidate: dict[str, list[dict[str, object]]] = defaultdict(list)
+
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
+        train = prepared.select_samples(fold.train_range)
+        val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, "LightGBM", fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
+        train_bundle = prepared.build_tabular_bundle(train, include_country=config.use_country_features)
+        val_bundle = prepared.build_tabular_bundle(val, include_country=config.use_country_features)
+        scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
+        train_X = scaler.transform(train_bundle.X)
+        val_X = scaler.transform(val_bundle.X)
+        scale_pos_weight = _scale_pos_weight(train_bundle.y)
+        single_class_probability = _single_class_probability(train_bundle.y)
+        candidate_loop_started_at = reporter.now()
+        for candidate_index, params in enumerate(LIGHTGBM_CANDIDATES, start=1):
+            candidate_started_at = reporter.now()
+            candidate_key = (
+                f"num_leaves={params['num_leaves']},lr={params['learning_rate']},n_estimators={params['n_estimators']}"
+            )
+            reporter.log(
+                (config.name, "LightGBM", fold.name),
+                f"candidate {candidate_index}/{len(LIGHTGBM_CANDIDATES)} started | {candidate_key}",
+            )
+            if single_class_probability is not None:
+                y_prob = predict_majority(single_class_probability, len(val_bundle.y))
+            else:
+                model = fit_lightgbm_classifier(
+                    train_X,
+                    train_bundle.y,
+                    num_leaves=params["num_leaves"],
+                    learning_rate=params["learning_rate"],
+                    n_estimators=params["n_estimators"],
+                    scale_pos_weight=scale_pos_weight,
+                    seed=config.random_seed,
+                )
+                y_prob = predict_lightgbm(model, val_X)
+            threshold = find_best_threshold_f1(val_bundle.y, y_prob)
+            frame = _prediction_frame(
+                val_bundle.metadata,
+                y_prob,
+                experiment=config.name,
+                model="LightGBM",
+                split="val",
+                threshold=threshold,
+                fold=fold.name,
+                candidate=candidate_key,
+            )
+            prediction_frames.append(frame)
+            row = _metrics_row(
+                frame,
+                experiment=config.name,
+                model="LightGBM",
+                split="val",
+                fold=fold.name,
+                candidate=candidate_key,
+            )
+            row["scale_pos_weight"] = scale_pos_weight
+            metrics_rows.append(row)
+            by_candidate[candidate_key].append(row | {"threshold": threshold})
+            reporter.log_step(
+                (config.name, "LightGBM", fold.name),
+                label="candidate",
+                index=candidate_index,
+                total=len(LIGHTGBM_CANDIDATES),
+                loop_started_at=candidate_loop_started_at,
+                step_started_at=candidate_started_at,
+                extra=f"{candidate_key} | pr_auc={format_metric(row['pr_auc'])}",
+            )
+        reporter.log_step(
+            (config.name, "LightGBM", fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra="candidate_search=done",
+        )
+
+    chosen_key, chosen_rows = _pick_best_candidate(by_candidate)
+    parts = dict(piece.split("=") for piece in chosen_key.split(","))
+    chosen = {
+        "candidate": chosen_key,
+        "num_leaves": int(parts["num_leaves"]),
+        "learning_rate": float(parts["lr"]),
+        "n_estimators": int(parts["n_estimators"]),
+        "threshold": float(np.median([row["threshold"] for row in chosen_rows])),
+    }
+    return chosen, metrics_rows, prediction_frames
+
+
+def _evaluate_catboost(prepared, config: ExperimentConfig, folds, *, reporter: ProgressReporter) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+    metrics_rows: list[dict[str, object]] = []
+    prediction_frames: list[pd.DataFrame] = []
+    by_candidate: dict[str, list[dict[str, object]]] = defaultdict(list)
+
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
+        train = prepared.select_samples(fold.train_range)
+        val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, "CatBoost", fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
+        train_bundle = prepared.build_tabular_bundle(train, include_country=config.use_country_features)
+        val_bundle = prepared.build_tabular_bundle(val, include_country=config.use_country_features)
+        scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
+        train_X = scaler.transform(train_bundle.X)
+        val_X = scaler.transform(val_bundle.X)
+        scale_pos_weight = _scale_pos_weight(train_bundle.y)
+        single_class_probability = _single_class_probability(train_bundle.y)
+        candidate_loop_started_at = reporter.now()
+        for candidate_index, params in enumerate(CATBOOST_CANDIDATES, start=1):
+            candidate_started_at = reporter.now()
+            candidate_key = f"depth={params['depth']},lr={params['learning_rate']},n_estimators={params['n_estimators']}"
+            reporter.log(
+                (config.name, "CatBoost", fold.name),
+                f"candidate {candidate_index}/{len(CATBOOST_CANDIDATES)} started | {candidate_key}",
+            )
+            if single_class_probability is not None:
+                y_prob = predict_majority(single_class_probability, len(val_bundle.y))
+            else:
+                model = fit_catboost_classifier(
+                    train_X,
+                    train_bundle.y,
+                    depth=params["depth"],
+                    learning_rate=params["learning_rate"],
+                    n_estimators=params["n_estimators"],
+                    scale_pos_weight=scale_pos_weight,
+                    seed=config.random_seed,
+                )
+                y_prob = predict_catboost(model, val_X)
+            threshold = find_best_threshold_f1(val_bundle.y, y_prob)
+            frame = _prediction_frame(
+                val_bundle.metadata,
+                y_prob,
+                experiment=config.name,
+                model="CatBoost",
+                split="val",
+                threshold=threshold,
+                fold=fold.name,
+                candidate=candidate_key,
+            )
+            prediction_frames.append(frame)
+            row = _metrics_row(
+                frame,
+                experiment=config.name,
+                model="CatBoost",
+                split="val",
+                fold=fold.name,
+                candidate=candidate_key,
+            )
+            row["scale_pos_weight"] = scale_pos_weight
+            metrics_rows.append(row)
+            by_candidate[candidate_key].append(row | {"threshold": threshold})
+            reporter.log_step(
+                (config.name, "CatBoost", fold.name),
+                label="candidate",
+                index=candidate_index,
+                total=len(CATBOOST_CANDIDATES),
+                loop_started_at=candidate_loop_started_at,
+                step_started_at=candidate_started_at,
+                extra=f"{candidate_key} | pr_auc={format_metric(row['pr_auc'])}",
+            )
+        reporter.log_step(
+            (config.name, "CatBoost", fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra="candidate_search=done",
+        )
+
+    chosen_key, chosen_rows = _pick_best_candidate(by_candidate)
+    parts = dict(piece.split("=") for piece in chosen_key.split(","))
+    chosen = {
+        "candidate": chosen_key,
+        "depth": int(parts["depth"]),
+        "learning_rate": float(parts["lr"]),
+        "n_estimators": int(parts["n_estimators"]),
+        "threshold": float(np.median([row["threshold"] for row in chosen_rows])),
+    }
+    return chosen, metrics_rows, prediction_frames
+
+
+def _evaluate_xgboost_weighted_calibrated(
+    prepared,
+    config: ExperimentConfig,
+    folds,
+    *,
+    reporter: ProgressReporter,
+) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
+    metrics_rows: list[dict[str, object]] = []
+    prediction_frames: list[pd.DataFrame] = []
+    by_candidate: dict[str, list[dict[str, object]]] = defaultdict(list)
+
+    fold_loop_started_at = reporter.now()
+    for fold_index, fold in enumerate(folds, start=1):
+        fold_started_at = reporter.now()
+        train = prepared.select_samples(fold.train_range)
+        val = prepared.select_samples(fold.val_range)
+        reporter.log(
+            (config.name, "XGBoostWeightedCalibrated", fold.name),
+            f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
+        )
+        candidate_loop_started_at = reporter.now()
+        for candidate_index, params in enumerate(XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES, start=1):
+            candidate_started_at = reporter.now()
+            candidate_key = (
+                f"max_depth={params['max_depth']},lr={params['learning_rate']},"
+                f"n_estimators={params['n_estimators']},calibration={params['calibration']}"
+            )
+            reporter.log(
+                (config.name, "XGBoostWeightedCalibrated", fold.name),
+                f"candidate {candidate_index}/{len(XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES)} started | {candidate_key}",
+            )
+            metadata, y_prob, fit_info = _predict_weighted_calibrated_xgboost(
+                prepared,
+                config,
+                train,
+                val,
+                max_depth=params["max_depth"],
+                learning_rate=params["learning_rate"],
+                n_estimators=params["n_estimators"],
+                calibration=params["calibration"],
+            )
+            threshold = find_best_threshold_f1(metadata["y_true"].to_numpy(dtype=int), y_prob)
+            frame = _prediction_frame(
+                metadata,
+                y_prob,
+                experiment=config.name,
+                model="XGBoostWeightedCalibrated",
+                split="val",
+                threshold=threshold,
+                fold=fold.name,
+                candidate=candidate_key,
+            )
+            prediction_frames.append(frame)
+            row = _metrics_row(
+                frame,
+                experiment=config.name,
+                model="XGBoostWeightedCalibrated",
+                split="val",
+                fold=fold.name,
+                candidate=candidate_key,
+            )
+            row["scale_pos_weight"] = fit_info["scale_pos_weight"]
+            row["calibration_method"] = fit_info["calibration"]
+            metrics_rows.append(row)
+            by_candidate[candidate_key].append(row | {"threshold": threshold})
+            reporter.log_step(
+                (config.name, "XGBoostWeightedCalibrated", fold.name),
+                label="candidate",
+                index=candidate_index,
+                total=len(XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES),
+                loop_started_at=candidate_loop_started_at,
+                step_started_at=candidate_started_at,
+                extra=f"{candidate_key} | pr_auc={format_metric(row['pr_auc'])}",
+            )
+        reporter.log_step(
+            (config.name, "XGBoostWeightedCalibrated", fold.name),
+            label="fold",
+            index=fold_index,
+            total=len(folds),
+            loop_started_at=fold_loop_started_at,
+            step_started_at=fold_started_at,
+            extra="candidate_search=done",
+        )
+
+    chosen_key, chosen_rows = _pick_best_candidate(by_candidate)
+    parts = dict(piece.split("=") for piece in chosen_key.split(","))
+    chosen = {
+        "candidate": chosen_key,
+        "max_depth": int(parts["max_depth"]),
+        "learning_rate": float(parts["lr"]),
+        "n_estimators": int(parts["n_estimators"]),
+        "calibration": parts["calibration"],
+        "threshold": float(np.median([row["threshold"] for row in chosen_rows])),
+    }
+    return chosen, metrics_rows, prediction_frames
+
+
 def _evaluate_sequence_model(
     prepared,
     config: ExperimentConfig,
@@ -995,6 +1417,90 @@ def _fit_and_score_final_model(
             y_prob = predict_xgboost(model, test_X)
         frame = _prediction_frame(
             test_bundle.metadata,
+            y_prob,
+            experiment=config.name,
+            model=model_name,
+            split="test",
+            threshold=chosen["threshold"],
+            candidate=chosen["candidate"],
+        )
+        return frame, _metrics_row(frame, experiment=config.name, model=model_name, split="test", candidate=chosen["candidate"])
+
+    if model_name == "LightGBM":
+        train_bundle = prepared.build_tabular_bundle(train_samples, include_country=config.use_country_features)
+        test_bundle = prepared.build_tabular_bundle(test_samples, include_country=config.use_country_features)
+        scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
+        train_X = scaler.transform(train_bundle.X)
+        test_X = scaler.transform(test_bundle.X)
+        single_class_probability = _single_class_probability(train_bundle.y)
+        if single_class_probability is not None:
+            y_prob = predict_majority(single_class_probability, len(test_bundle.y))
+        else:
+            model = fit_lightgbm_classifier(
+                train_X,
+                train_bundle.y,
+                num_leaves=chosen["num_leaves"],
+                learning_rate=chosen["learning_rate"],
+                n_estimators=chosen["n_estimators"],
+                scale_pos_weight=_scale_pos_weight(train_bundle.y),
+                seed=config.random_seed,
+            )
+            y_prob = predict_lightgbm(model, test_X)
+        frame = _prediction_frame(
+            test_bundle.metadata,
+            y_prob,
+            experiment=config.name,
+            model=model_name,
+            split="test",
+            threshold=chosen["threshold"],
+            candidate=chosen["candidate"],
+        )
+        return frame, _metrics_row(frame, experiment=config.name, model=model_name, split="test", candidate=chosen["candidate"])
+
+    if model_name == "CatBoost":
+        train_bundle = prepared.build_tabular_bundle(train_samples, include_country=config.use_country_features)
+        test_bundle = prepared.build_tabular_bundle(test_samples, include_country=config.use_country_features)
+        scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
+        train_X = scaler.transform(train_bundle.X)
+        test_X = scaler.transform(test_bundle.X)
+        single_class_probability = _single_class_probability(train_bundle.y)
+        if single_class_probability is not None:
+            y_prob = predict_majority(single_class_probability, len(test_bundle.y))
+        else:
+            model = fit_catboost_classifier(
+                train_X,
+                train_bundle.y,
+                depth=chosen["depth"],
+                learning_rate=chosen["learning_rate"],
+                n_estimators=chosen["n_estimators"],
+                scale_pos_weight=_scale_pos_weight(train_bundle.y),
+                seed=config.random_seed,
+            )
+            y_prob = predict_catboost(model, test_X)
+        frame = _prediction_frame(
+            test_bundle.metadata,
+            y_prob,
+            experiment=config.name,
+            model=model_name,
+            split="test",
+            threshold=chosen["threshold"],
+            candidate=chosen["candidate"],
+        )
+        return frame, _metrics_row(frame, experiment=config.name, model=model_name, split="test", candidate=chosen["candidate"])
+
+    if model_name == "XGBoostWeightedCalibrated":
+        metadata, y_prob, _ = _predict_weighted_calibrated_xgboost(
+            prepared,
+            config,
+            train_samples,
+            test_samples,
+            max_depth=chosen["max_depth"],
+            learning_rate=chosen["learning_rate"],
+            n_estimators=chosen["n_estimators"],
+            calibration=chosen["calibration"],
+        )
+        frame = _prediction_frame(
+            metadata,
             y_prob,
             experiment=config.name,
             model=model_name,

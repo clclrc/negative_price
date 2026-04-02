@@ -1,0 +1,427 @@
+(negprice) root@autodl-container-zbnl9l7av5-75a6be02:~/autodl-tmp/negative_price# python run_negative_price_experiments.py   --data-file ALL_COUNTRIES_2024_2025_WITH_ERA5.csv   --output-dir e6   --experiments E6
+[E6] experiment 1/1 started | data=/root/autodl-tmp/negative_price/ALL_COUNTRIES_2024_2025_WITH_ERA5.csv | output=/root/autodl-tmp/negative_price/e6/E6
+[E6] data prep started
+[E6] data prep completed | samples=293426 | countries=18 | elapsed=3.1s
+[E6][SourcePretrain] source pretraining started | train_samples=134653 | val_samples=26658
+[E6][SourcePretrain][GRU] sequence training start | model=GRU | device=cuda | train_samples=134653 | val_samples=26658 | batches=526 | max_epochs=30
+[E6][SourcePretrain][GRU] epoch 1/30 | train_loss=0.6411 | val_pr_auc=0.6232 | best_epoch=1 | best_pr_auc=0.6232 | epoch=28.1s | elapsed=28.2s | speed=4783.7 samples/s | eta=00:13:36
+[E6][SourcePretrain][GRU] epoch 2/30 | train_loss=0.4892 | val_pr_auc=0.6144 | best_epoch=1 | best_pr_auc=0.6232 | epoch=29.2s | elapsed=57.3s | speed=4614.4 samples/s | eta=00:13:23
+[E6][SourcePretrain][GRU] epoch 3/30 | train_loss=0.4332 | val_pr_auc=0.6958 | best_epoch=3 | best_pr_auc=0.6958 | epoch=27.7s | elapsed=00:01:25 | speed=4869.2 samples/s | eta=00:12:45
+[E6][SourcePretrain][GRU] epoch 4/30 | train_loss=0.3942 | val_pr_auc=0.6656 | best_epoch=3 | best_pr_auc=0.6958 | epoch=26.8s | elapsed=00:01:52 | speed=5025.6 samples/s | eta=00:12:07
+[E6][SourcePretrain][GRU] epoch 5/30 | train_loss=0.3557 | val_pr_auc=0.6334 | best_epoch=3 | best_pr_auc=0.6958 | epoch=27.4s | elapsed=00:02:19 | speed=4910.4 samples/s | eta=00:11:36
+[E6][SourcePretrain][GRU] epoch 6/30 | train_loss=0.3259 | val_pr_auc=0.6220 | best_epoch=3 | best_pr_auc=0.6958 | epoch=27.4s | elapsed=00:02:47 | speed=4913.3 samples/s | eta=00:11:06
+[E6][SourcePretrain][GRU] epoch 7/30 | train_loss=0.2976 | val_pr_auc=0.6836 | best_epoch=3 | best_pr_auc=0.6958 | epoch=29.1s | elapsed=00:03:16 | speed=4627.9 samples/s | eta=00:10:43
+[E6][SourcePretrain][GRU] epoch 8/30 | train_loss=0.2677 | val_pr_auc=0.6124 | best_epoch=3 | best_pr_auc=0.6958 | epoch=26.8s | elapsed=00:03:42 | speed=5030.9 samples/s | eta=00:10:12
+[E6][SourcePretrain][GRU] early stopping triggered | epoch=8/30 | patience=5 | best_epoch=3 | best_pr_auc=0.6958
+[E6][SourcePretrain][GRU] sequence training completed | best_epoch=3 | best_pr_auc=0.6958 | elapsed=00:03:42
+[E6][SourcePretrain] source pretraining completed | threshold=0.8092 | elapsed=00:03:48
+[E6][BG] country 1/5 started | test_samples=4172
+[E6][BG][ZeroShot] evaluation started
+[E6][BG][ZeroShot] evaluation completed | pr_auc=0.3291 | elapsed=0.6s
+[E6][BG][B90] budget 1/2 started | train_samples=1369 | val_samples=561
+[E6][BG][B90][TargetOnly] evaluation started
+[E6][BG][B90][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=1369 | val_samples=561 | batches=6 | max_epochs=30
+[E6][BG][B90][TargetOnly] epoch 1/30 | train_loss=1.2464 | val_pr_auc=0.3679 | best_epoch=1 | best_pr_auc=0.3679 | epoch=0.3s | elapsed=0.3s | speed=4400.1 samples/s | eta=9.1s
+[E6][BG][B90][TargetOnly] epoch 2/30 | train_loss=1.0061 | val_pr_auc=0.4711 | best_epoch=2 | best_pr_auc=0.4711 | epoch=0.3s | elapsed=0.6s | speed=4431.2 samples/s | eta=8.7s
+[E6][BG][B90][TargetOnly] epoch 3/30 | train_loss=0.6818 | val_pr_auc=0.5229 | best_epoch=3 | best_pr_auc=0.5229 | epoch=0.3s | elapsed=1.0s | speed=4117.4 samples/s | eta=8.6s
+[E6][BG][B90][TargetOnly] epoch 4/30 | train_loss=0.4507 | val_pr_auc=0.7462 | best_epoch=4 | best_pr_auc=0.7462 | epoch=0.3s | elapsed=1.3s | speed=4409.9 samples/s | eta=8.2s
+[E6][BG][B90][TargetOnly] epoch 5/30 | train_loss=0.4189 | val_pr_auc=0.7302 | best_epoch=4 | best_pr_auc=0.7462 | epoch=0.3s | elapsed=1.6s | speed=4284.7 samples/s | eta=7.9s
+[E6][BG][B90][TargetOnly] epoch 6/30 | train_loss=0.3430 | val_pr_auc=0.7205 | best_epoch=4 | best_pr_auc=0.7462 | epoch=0.3s | elapsed=1.9s | speed=4470.4 samples/s | eta=7.6s
+[E6][BG][B90][TargetOnly] epoch 7/30 | train_loss=0.2734 | val_pr_auc=0.7181 | best_epoch=4 | best_pr_auc=0.7462 | epoch=0.3s | elapsed=2.2s | speed=4478.7 samples/s | eta=7.2s
+[E6][BG][B90][TargetOnly] epoch 8/30 | train_loss=0.2813 | val_pr_auc=0.7785 | best_epoch=8 | best_pr_auc=0.7785 | epoch=0.3s | elapsed=2.5s | speed=4370.3 samples/s | eta=6.9s
+[E6][BG][B90][TargetOnly] epoch 9/30 | train_loss=0.2646 | val_pr_auc=0.6782 | best_epoch=8 | best_pr_auc=0.7785 | epoch=0.3s | elapsed=2.8s | speed=4420.9 samples/s | eta=6.6s
+[E6][BG][B90][TargetOnly] epoch 10/30 | train_loss=0.2627 | val_pr_auc=0.6839 | best_epoch=8 | best_pr_auc=0.7785 | epoch=0.3s | elapsed=3.1s | speed=4359.5 samples/s | eta=6.3s
+[E6][BG][B90][TargetOnly] epoch 11/30 | train_loss=0.2278 | val_pr_auc=0.7625 | best_epoch=8 | best_pr_auc=0.7785 | epoch=0.3s | elapsed=3.5s | speed=4277.6 samples/s | eta=6.0s
+[E6][BG][B90][TargetOnly] epoch 12/30 | train_loss=0.2220 | val_pr_auc=0.6851 | best_epoch=8 | best_pr_auc=0.7785 | epoch=0.3s | elapsed=3.8s | speed=4118.9 samples/s | eta=5.7s
+[E6][BG][B90][TargetOnly] epoch 13/30 | train_loss=0.1899 | val_pr_auc=0.6900 | best_epoch=8 | best_pr_auc=0.7785 | epoch=0.3s | elapsed=4.1s | speed=4078.8 samples/s | eta=5.4s
+[E6][BG][B90][TargetOnly] early stopping triggered | epoch=13/30 | patience=5 | best_epoch=8 | best_pr_auc=0.7785
+[E6][BG][B90][TargetOnly] sequence training completed | best_epoch=8 | best_pr_auc=0.7785 | elapsed=4.1s
+[E6][BG][B90][TargetOnly] evaluation completed | pr_auc=0.2437 | elapsed=4.8s
+[E6][BG][B90][TransferFineTune] evaluation started
+[E6][BG][B90][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=1369 | val_samples=561 | batches=6 | max_epochs=15
+[E6][BG][B90][TransferFineTune] epoch 1/15 | train_loss=0.3207 | val_pr_auc=0.5940 | best_epoch=1 | best_pr_auc=0.5940 | epoch=0.3s | elapsed=0.3s | speed=4425.1 samples/s | eta=4.3s
+[E6][BG][B90][TransferFineTune] epoch 2/15 | train_loss=0.2902 | val_pr_auc=0.5931 | best_epoch=1 | best_pr_auc=0.5940 | epoch=0.3s | elapsed=0.6s | speed=4379.3 samples/s | eta=4.0s
+[E6][BG][B90][TransferFineTune] epoch 3/15 | train_loss=0.2751 | val_pr_auc=0.6173 | best_epoch=3 | best_pr_auc=0.6173 | epoch=0.3s | elapsed=0.9s | speed=4328.8 samples/s | eta=3.8s
+[E6][BG][B90][TransferFineTune] epoch 4/15 | train_loss=0.2692 | val_pr_auc=0.6230 | best_epoch=4 | best_pr_auc=0.6230 | epoch=0.3s | elapsed=1.3s | speed=4245.1 samples/s | eta=3.5s
+[E6][BG][B90][TransferFineTune] epoch 5/15 | train_loss=0.2393 | val_pr_auc=0.6319 | best_epoch=5 | best_pr_auc=0.6319 | epoch=0.3s | elapsed=1.6s | speed=4418.0 samples/s | eta=3.1s
+[E6][BG][B90][TransferFineTune] epoch 6/15 | train_loss=0.2415 | val_pr_auc=0.6278 | best_epoch=5 | best_pr_auc=0.6319 | epoch=0.3s | elapsed=1.9s | speed=4465.2 samples/s | eta=2.8s
+[E6][BG][B90][TransferFineTune] epoch 7/15 | train_loss=0.2394 | val_pr_auc=0.6406 | best_epoch=7 | best_pr_auc=0.6406 | epoch=0.3s | elapsed=2.2s | speed=4411.1 samples/s | eta=2.5s
+[E6][BG][B90][TransferFineTune] epoch 8/15 | train_loss=0.2239 | val_pr_auc=0.6533 | best_epoch=8 | best_pr_auc=0.6533 | epoch=0.3s | elapsed=2.5s | speed=4427.3 samples/s | eta=2.2s
+[E6][BG][B90][TransferFineTune] epoch 9/15 | train_loss=0.2194 | val_pr_auc=0.6657 | best_epoch=9 | best_pr_auc=0.6657 | epoch=0.3s | elapsed=2.8s | speed=4401.0 samples/s | eta=1.9s
+[E6][BG][B90][TransferFineTune] epoch 10/15 | train_loss=0.2181 | val_pr_auc=0.6628 | best_epoch=9 | best_pr_auc=0.6657 | epoch=0.3s | elapsed=3.1s | speed=4190.2 samples/s | eta=1.6s
+[E6][BG][B90][TransferFineTune] epoch 11/15 | train_loss=0.1983 | val_pr_auc=0.6606 | best_epoch=9 | best_pr_auc=0.6657 | epoch=0.3s | elapsed=3.5s | speed=4246.9 samples/s | eta=1.3s
+[E6][BG][B90][TransferFineTune] epoch 12/15 | train_loss=0.2063 | val_pr_auc=0.6604 | best_epoch=9 | best_pr_auc=0.6657 | epoch=0.4s | elapsed=3.9s | speed=3314.5 samples/s | eta=1.0s
+[E6][BG][B90][TransferFineTune] early stopping triggered | epoch=12/15 | patience=3 | best_epoch=9 | best_pr_auc=0.6657
+[E6][BG][B90][TransferFineTune] sequence training completed | best_epoch=9 | best_pr_auc=0.6657 | elapsed=3.9s
+[E6][BG][B90][TransferFineTune] evaluation completed | pr_auc=0.4955 | transfer_gain=0.2518 | elapsed=4.6s
+[E6][BG][B90] budget 1/2 completed | step=9.4s | elapsed=9.5s | eta=9.5s | transfer_pr_auc=0.4955
+[E6][BG][B180] budget 2/2 started | train_samples=2780 | val_samples=1293
+[E6][BG][B180][TargetOnly] evaluation started
+[E6][BG][B180][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=2780 | val_samples=1293 | batches=11 | max_epochs=30
+[E6][BG][B180][TargetOnly] epoch 1/30 | train_loss=1.2136 | val_pr_auc=0.3913 | best_epoch=1 | best_pr_auc=0.3913 | epoch=0.8s | elapsed=0.8s | speed=3696.6 samples/s | eta=21.8s
+[E6][BG][B180][TargetOnly] epoch 2/30 | train_loss=0.6455 | val_pr_auc=0.3800 | best_epoch=1 | best_pr_auc=0.3913 | epoch=0.7s | elapsed=1.5s | speed=3870.6 samples/s | eta=20.6s
+[E6][BG][B180][TargetOnly] epoch 3/30 | train_loss=0.2700 | val_pr_auc=0.4516 | best_epoch=3 | best_pr_auc=0.4516 | epoch=0.6s | elapsed=2.1s | speed=4414.9 samples/s | eta=18.9s
+[E6][BG][B180][TargetOnly] epoch 4/30 | train_loss=0.1855 | val_pr_auc=0.4809 | best_epoch=4 | best_pr_auc=0.4809 | epoch=0.6s | elapsed=2.7s | speed=4319.8 samples/s | eta=17.8s
+[E6][BG][B180][TargetOnly] epoch 5/30 | train_loss=0.2155 | val_pr_auc=0.4964 | best_epoch=5 | best_pr_auc=0.4964 | epoch=0.6s | elapsed=3.4s | speed=4386.7 samples/s | eta=16.9s
+[E6][BG][B180][TargetOnly] epoch 6/30 | train_loss=0.1226 | val_pr_auc=0.5397 | best_epoch=6 | best_pr_auc=0.5397 | epoch=0.7s | elapsed=4.0s | speed=4204.0 samples/s | eta=16.2s
+[E6][BG][B180][TargetOnly] epoch 7/30 | train_loss=0.1211 | val_pr_auc=0.5496 | best_epoch=7 | best_pr_auc=0.5496 | epoch=0.7s | elapsed=4.8s | speed=3790.6 samples/s | eta=15.7s
+[E6][BG][B180][TargetOnly] epoch 8/30 | train_loss=0.1315 | val_pr_auc=0.4875 | best_epoch=7 | best_pr_auc=0.5496 | epoch=0.7s | elapsed=5.4s | speed=4117.6 samples/s | eta=15.0s
+[E6][BG][B180][TargetOnly] epoch 9/30 | train_loss=0.1257 | val_pr_auc=0.4598 | best_epoch=7 | best_pr_auc=0.5496 | epoch=0.7s | elapsed=6.1s | speed=4230.8 samples/s | eta=14.2s
+[E6][BG][B180][TargetOnly] epoch 10/30 | train_loss=0.1380 | val_pr_auc=0.4501 | best_epoch=7 | best_pr_auc=0.5496 | epoch=0.7s | elapsed=6.8s | speed=4119.1 samples/s | eta=13.6s
+[E6][BG][B180][TargetOnly] epoch 11/30 | train_loss=0.1223 | val_pr_auc=0.4619 | best_epoch=7 | best_pr_auc=0.5496 | epoch=0.7s | elapsed=7.5s | speed=3944.5 samples/s | eta=12.9s
+[E6][BG][B180][TargetOnly] epoch 12/30 | train_loss=0.1181 | val_pr_auc=0.5527 | best_epoch=12 | best_pr_auc=0.5527 | epoch=0.7s | elapsed=8.2s | speed=3970.8 samples/s | eta=12.3s
+[E6][BG][B180][TargetOnly] epoch 13/30 | train_loss=0.1054 | val_pr_auc=0.5458 | best_epoch=12 | best_pr_auc=0.5527 | epoch=0.7s | elapsed=8.9s | speed=3894.1 samples/s | eta=11.6s
+[E6][BG][B180][TargetOnly] epoch 14/30 | train_loss=0.0875 | val_pr_auc=0.5089 | best_epoch=12 | best_pr_auc=0.5527 | epoch=0.7s | elapsed=9.6s | speed=3963.9 samples/s | eta=11.0s
+[E6][BG][B180][TargetOnly] epoch 15/30 | train_loss=0.0880 | val_pr_auc=0.5080 | best_epoch=12 | best_pr_auc=0.5527 | epoch=0.7s | elapsed=10.3s | speed=4009.3 samples/s | eta=10.3s
+[E6][BG][B180][TargetOnly] epoch 16/30 | train_loss=0.0729 | val_pr_auc=0.4473 | best_epoch=12 | best_pr_auc=0.5527 | epoch=0.7s | elapsed=11.0s | speed=4197.2 samples/s | eta=9.6s
+[E6][BG][B180][TargetOnly] epoch 17/30 | train_loss=0.1247 | val_pr_auc=0.4836 | best_epoch=12 | best_pr_auc=0.5527 | epoch=0.7s | elapsed=11.7s | speed=3930.2 samples/s | eta=8.9s
+[E6][BG][B180][TargetOnly] early stopping triggered | epoch=17/30 | patience=5 | best_epoch=12 | best_pr_auc=0.5527
+[E6][BG][B180][TargetOnly] sequence training completed | best_epoch=12 | best_pr_auc=0.5527 | elapsed=11.7s
+[E6][BG][B180][TargetOnly] evaluation completed | pr_auc=0.5318 | elapsed=12.6s
+[E6][BG][B180][TransferFineTune] evaluation started
+[E6][BG][B180][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=2780 | val_samples=1293 | batches=11 | max_epochs=15
+[E6][BG][B180][TransferFineTune] epoch 1/15 | train_loss=0.1943 | val_pr_auc=0.5608 | best_epoch=1 | best_pr_auc=0.5608 | epoch=0.6s | elapsed=0.6s | speed=4350.6 samples/s | eta=9.0s
+[E6][BG][B180][TransferFineTune] epoch 2/15 | train_loss=0.1589 | val_pr_auc=0.5767 | best_epoch=2 | best_pr_auc=0.5767 | epoch=0.6s | elapsed=1.3s | speed=4333.6 samples/s | eta=8.3s
+[E6][BG][B180][TransferFineTune] epoch 3/15 | train_loss=0.1422 | val_pr_auc=0.5729 | best_epoch=2 | best_pr_auc=0.5767 | epoch=0.6s | elapsed=1.9s | speed=4362.4 samples/s | eta=7.7s
+[E6][BG][B180][TransferFineTune] epoch 4/15 | train_loss=0.1334 | val_pr_auc=0.5644 | best_epoch=2 | best_pr_auc=0.5767 | epoch=0.7s | elapsed=2.6s | speed=4220.3 samples/s | eta=7.1s
+[E6][BG][B180][TransferFineTune] epoch 5/15 | train_loss=0.1247 | val_pr_auc=0.5733 | best_epoch=2 | best_pr_auc=0.5767 | epoch=0.6s | elapsed=3.2s | speed=4295.8 samples/s | eta=6.4s
+[E6][BG][B180][TransferFineTune] early stopping triggered | epoch=5/15 | patience=3 | best_epoch=2 | best_pr_auc=0.5767
+[E6][BG][B180][TransferFineTune] sequence training completed | best_epoch=2 | best_pr_auc=0.5767 | elapsed=3.2s
+[E6][BG][B180][TransferFineTune] evaluation completed | pr_auc=0.3183 | transfer_gain=-0.2135 | elapsed=4.1s
+[E6][BG][B180] budget 2/2 completed | step=16.7s | elapsed=26.2s | eta=0.0s | transfer_pr_auc=0.3183
+[E6][BG] country 1/5 completed | step=26.8s | elapsed=26.8s | eta=00:01:47 | budgets=2
+[E6][EE] country 2/5 started | test_samples=3535
+[E6][EE][ZeroShot] evaluation started
+[E6][EE][ZeroShot] evaluation completed | pr_auc=0.0938 | elapsed=0.6s
+[E6][EE][B90] budget 1/2 started | train_samples=1373 | val_samples=710
+[E6][EE][B90][TargetOnly] evaluation started
+[E6][EE][B90][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=1373 | val_samples=710 | batches=6 | max_epochs=30
+[E6][EE][B90][TargetOnly] epoch 1/30 | train_loss=1.2850 | val_pr_auc=0.4204 | best_epoch=1 | best_pr_auc=0.4204 | epoch=0.3s | elapsed=0.3s | speed=3981.3 samples/s | eta=10.0s
+[E6][EE][B90][TargetOnly] epoch 2/30 | train_loss=1.0795 | val_pr_auc=0.5038 | best_epoch=2 | best_pr_auc=0.5038 | epoch=0.4s | elapsed=0.7s | speed=3903.7 samples/s | eta=9.8s
+[E6][EE][B90][TargetOnly] epoch 3/30 | train_loss=0.7476 | val_pr_auc=0.5531 | best_epoch=3 | best_pr_auc=0.5531 | epoch=0.3s | elapsed=1.0s | speed=4012.1 samples/s | eta=9.4s
+[E6][EE][B90][TargetOnly] epoch 4/30 | train_loss=0.6136 | val_pr_auc=0.5889 | best_epoch=4 | best_pr_auc=0.5889 | epoch=0.3s | elapsed=1.4s | speed=4176.7 samples/s | eta=8.9s
+[E6][EE][B90][TargetOnly] epoch 5/30 | train_loss=0.5490 | val_pr_auc=0.5948 | best_epoch=5 | best_pr_auc=0.5948 | epoch=0.3s | elapsed=1.7s | speed=4020.5 samples/s | eta=8.6s
+[E6][EE][B90][TargetOnly] epoch 6/30 | train_loss=0.4177 | val_pr_auc=0.6271 | best_epoch=6 | best_pr_auc=0.6271 | epoch=0.3s | elapsed=2.0s | speed=4066.5 samples/s | eta=8.2s
+[E6][EE][B90][TargetOnly] epoch 7/30 | train_loss=0.4197 | val_pr_auc=0.6116 | best_epoch=6 | best_pr_auc=0.6271 | epoch=0.3s | elapsed=2.4s | speed=3979.7 samples/s | eta=7.9s
+[E6][EE][B90][TargetOnly] epoch 8/30 | train_loss=0.4146 | val_pr_auc=0.6237 | best_epoch=6 | best_pr_auc=0.6271 | epoch=0.3s | elapsed=2.7s | speed=4088.5 samples/s | eta=7.5s
+[E6][EE][B90][TargetOnly] epoch 9/30 | train_loss=0.3724 | val_pr_auc=0.5889 | best_epoch=6 | best_pr_auc=0.6271 | epoch=0.3s | elapsed=3.1s | speed=4130.4 samples/s | eta=7.1s
+[E6][EE][B90][TargetOnly] epoch 10/30 | train_loss=0.3343 | val_pr_auc=0.5845 | best_epoch=6 | best_pr_auc=0.6271 | epoch=0.4s | elapsed=3.4s | speed=3818.0 samples/s | eta=6.8s
+[E6][EE][B90][TargetOnly] epoch 11/30 | train_loss=0.3063 | val_pr_auc=0.5960 | best_epoch=6 | best_pr_auc=0.6271 | epoch=0.4s | elapsed=3.8s | speed=3632.0 samples/s | eta=6.6s
+[E6][EE][B90][TargetOnly] early stopping triggered | epoch=11/30 | patience=5 | best_epoch=6 | best_pr_auc=0.6271
+[E6][EE][B90][TargetOnly] sequence training completed | best_epoch=6 | best_pr_auc=0.6271 | elapsed=3.8s
+[E6][EE][B90][TargetOnly] evaluation completed | pr_auc=0.0206 | elapsed=4.5s
+[E6][EE][B90][TransferFineTune] evaluation started
+[E6][EE][B90][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=1373 | val_samples=710 | batches=6 | max_epochs=15
+[E6][EE][B90][TransferFineTune] epoch 1/15 | train_loss=0.5443 | val_pr_auc=0.5552 | best_epoch=1 | best_pr_auc=0.5552 | epoch=0.4s | elapsed=0.4s | speed=3849.9 samples/s | eta=5.0s
+[E6][EE][B90][TransferFineTune] epoch 2/15 | train_loss=0.4946 | val_pr_auc=0.5669 | best_epoch=2 | best_pr_auc=0.5669 | epoch=0.3s | elapsed=0.7s | speed=4033.3 samples/s | eta=4.5s
+[E6][EE][B90][TransferFineTune] epoch 3/15 | train_loss=0.4511 | val_pr_auc=0.5739 | best_epoch=3 | best_pr_auc=0.5739 | epoch=0.4s | elapsed=1.1s | speed=3818.5 samples/s | eta=4.2s
+[E6][EE][B90][TransferFineTune] epoch 4/15 | train_loss=0.4174 | val_pr_auc=0.5722 | best_epoch=3 | best_pr_auc=0.5739 | epoch=0.4s | elapsed=1.4s | speed=3880.0 samples/s | eta=3.9s
+[E6][EE][B90][TransferFineTune] epoch 5/15 | train_loss=0.4176 | val_pr_auc=0.5785 | best_epoch=5 | best_pr_auc=0.5785 | epoch=0.4s | elapsed=1.8s | speed=3884.9 samples/s | eta=3.5s
+[E6][EE][B90][TransferFineTune] epoch 6/15 | train_loss=0.3732 | val_pr_auc=0.5900 | best_epoch=6 | best_pr_auc=0.5900 | epoch=0.4s | elapsed=2.1s | speed=3921.8 samples/s | eta=3.2s
+[E6][EE][B90][TransferFineTune] epoch 7/15 | train_loss=0.3676 | val_pr_auc=0.5915 | best_epoch=7 | best_pr_auc=0.5915 | epoch=0.4s | elapsed=2.5s | speed=3910.1 samples/s | eta=2.8s
+[E6][EE][B90][TransferFineTune] epoch 8/15 | train_loss=0.3634 | val_pr_auc=0.6049 | best_epoch=8 | best_pr_auc=0.6049 | epoch=0.3s | elapsed=2.8s | speed=3967.5 samples/s | eta=2.5s
+[E6][EE][B90][TransferFineTune] epoch 9/15 | train_loss=0.3409 | val_pr_auc=0.6042 | best_epoch=8 | best_pr_auc=0.6049 | epoch=0.4s | elapsed=3.2s | speed=3815.4 samples/s | eta=2.1s
+[E6][EE][B90][TransferFineTune] epoch 10/15 | train_loss=0.3377 | val_pr_auc=0.6064 | best_epoch=10 | best_pr_auc=0.6064 | epoch=0.3s | elapsed=3.5s | speed=3933.1 samples/s | eta=1.8s
+[E6][EE][B90][TransferFineTune] epoch 11/15 | train_loss=0.3165 | val_pr_auc=0.6088 | best_epoch=11 | best_pr_auc=0.6088 | epoch=0.3s | elapsed=3.9s | speed=3932.6 samples/s | eta=1.4s
+[E6][EE][B90][TransferFineTune] epoch 12/15 | train_loss=0.3011 | val_pr_auc=0.6148 | best_epoch=12 | best_pr_auc=0.6148 | epoch=0.4s | elapsed=4.2s | speed=3790.7 samples/s | eta=1.1s
+[E6][EE][B90][TransferFineTune] epoch 13/15 | train_loss=0.3086 | val_pr_auc=0.6146 | best_epoch=12 | best_pr_auc=0.6148 | epoch=0.3s | elapsed=4.6s | speed=3936.7 samples/s | eta=0.7s
+[E6][EE][B90][TransferFineTune] epoch 14/15 | train_loss=0.3000 | val_pr_auc=0.6176 | best_epoch=14 | best_pr_auc=0.6176 | epoch=0.3s | elapsed=4.9s | speed=4004.2 samples/s | eta=0.4s
+[E6][EE][B90][TransferFineTune] epoch 15/15 | train_loss=0.2944 | val_pr_auc=0.6209 | best_epoch=15 | best_pr_auc=0.6209 | epoch=0.4s | elapsed=5.3s | speed=3878.9 samples/s | eta=0.0s
+[E6][EE][B90][TransferFineTune] sequence training completed | best_epoch=15 | best_pr_auc=0.6209 | elapsed=5.3s
+[E6][EE][B90][TransferFineTune] evaluation completed | pr_auc=0.0827 | transfer_gain=0.0621 | elapsed=6.0s
+[E6][EE][B90] budget 1/2 completed | step=10.4s | elapsed=10.4s | eta=10.4s | transfer_pr_auc=0.0827
+[E6][EE][B180] budget 2/2 started | train_samples=2686 | val_samples=1445
+[E6][EE][B180][TargetOnly] evaluation started
+[E6][EE][B180][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=2686 | val_samples=1445 | batches=11 | max_epochs=30
+[E6][EE][B180][TargetOnly] epoch 1/30 | train_loss=1.1632 | val_pr_auc=0.2699 | best_epoch=1 | best_pr_auc=0.2699 | epoch=0.7s | elapsed=0.7s | speed=3994.6 samples/s | eta=19.5s
+[E6][EE][B180][TargetOnly] epoch 2/30 | train_loss=0.6358 | val_pr_auc=0.2861 | best_epoch=2 | best_pr_auc=0.2861 | epoch=0.7s | elapsed=1.3s | speed=4060.4 samples/s | eta=18.7s
+[E6][EE][B180][TargetOnly] epoch 3/30 | train_loss=0.5471 | val_pr_auc=0.3694 | best_epoch=3 | best_pr_auc=0.3694 | epoch=0.7s | elapsed=2.0s | speed=4024.4 samples/s | eta=18.0s
+[E6][EE][B180][TargetOnly] epoch 4/30 | train_loss=0.3989 | val_pr_auc=0.3272 | best_epoch=3 | best_pr_auc=0.3694 | epoch=0.6s | elapsed=2.6s | speed=4218.5 samples/s | eta=17.2s
+[E6][EE][B180][TargetOnly] epoch 5/30 | train_loss=0.3955 | val_pr_auc=0.3824 | best_epoch=5 | best_pr_auc=0.3824 | epoch=0.6s | elapsed=3.3s | speed=4200.1 samples/s | eta=16.4s
+[E6][EE][B180][TargetOnly] epoch 6/30 | train_loss=0.3055 | val_pr_auc=0.3882 | best_epoch=6 | best_pr_auc=0.3882 | epoch=0.6s | elapsed=3.9s | speed=4144.8 samples/s | eta=15.7s
+[E6][EE][B180][TargetOnly] epoch 7/30 | train_loss=0.3082 | val_pr_auc=0.3247 | best_epoch=6 | best_pr_auc=0.3882 | epoch=0.6s | elapsed=4.6s | speed=4163.9 samples/s | eta=15.0s
+[E6][EE][B180][TargetOnly] epoch 8/30 | train_loss=0.3149 | val_pr_auc=0.3448 | best_epoch=6 | best_pr_auc=0.3882 | epoch=0.6s | elapsed=5.2s | speed=4178.5 samples/s | eta=14.3s
+[E6][EE][B180][TargetOnly] epoch 9/30 | train_loss=0.2637 | val_pr_auc=0.3958 | best_epoch=9 | best_pr_auc=0.3958 | epoch=0.7s | elapsed=5.9s | speed=4012.0 samples/s | eta=13.7s
+[E6][EE][B180][TargetOnly] epoch 10/30 | train_loss=0.2440 | val_pr_auc=0.3898 | best_epoch=9 | best_pr_auc=0.3958 | epoch=0.7s | elapsed=6.6s | speed=3873.9 samples/s | eta=13.2s
+[E6][EE][B180][TargetOnly] epoch 11/30 | train_loss=0.3539 | val_pr_auc=0.3251 | best_epoch=9 | best_pr_auc=0.3958 | epoch=0.7s | elapsed=7.2s | speed=4086.0 samples/s | eta=12.5s
+[E6][EE][B180][TargetOnly] epoch 12/30 | train_loss=0.2841 | val_pr_auc=0.3968 | best_epoch=12 | best_pr_auc=0.3968 | epoch=0.7s | elapsed=7.9s | speed=4053.4 samples/s | eta=11.8s
+[E6][EE][B180][TargetOnly] epoch 13/30 | train_loss=0.2555 | val_pr_auc=0.4117 | best_epoch=13 | best_pr_auc=0.4117 | epoch=0.7s | elapsed=8.6s | speed=4039.8 samples/s | eta=11.2s
+[E6][EE][B180][TargetOnly] epoch 14/30 | train_loss=0.2311 | val_pr_auc=0.3398 | best_epoch=13 | best_pr_auc=0.4117 | epoch=0.7s | elapsed=9.2s | speed=4091.1 samples/s | eta=10.5s
+[E6][EE][B180][TargetOnly] epoch 15/30 | train_loss=0.2115 | val_pr_auc=0.3626 | best_epoch=13 | best_pr_auc=0.4117 | epoch=0.7s | elapsed=9.9s | speed=3952.2 samples/s | eta=9.9s
+[E6][EE][B180][TargetOnly] epoch 16/30 | train_loss=0.1696 | val_pr_auc=0.3870 | best_epoch=13 | best_pr_auc=0.4117 | epoch=0.7s | elapsed=10.6s | speed=4073.3 samples/s | eta=9.2s
+[E6][EE][B180][TargetOnly] epoch 17/30 | train_loss=0.1878 | val_pr_auc=0.3634 | best_epoch=13 | best_pr_auc=0.4117 | epoch=0.7s | elapsed=11.2s | speed=4041.3 samples/s | eta=8.6s
+[E6][EE][B180][TargetOnly] epoch 18/30 | train_loss=0.1501 | val_pr_auc=0.4024 | best_epoch=13 | best_pr_auc=0.4117 | epoch=0.7s | elapsed=11.9s | speed=3928.4 samples/s | eta=7.9s
+[E6][EE][B180][TargetOnly] early stopping triggered | epoch=18/30 | patience=5 | best_epoch=13 | best_pr_auc=0.4117
+[E6][EE][B180][TargetOnly] sequence training completed | best_epoch=13 | best_pr_auc=0.4117 | elapsed=11.9s
+[E6][EE][B180][TargetOnly] evaluation completed | pr_auc=0.0249 | elapsed=12.7s
+[E6][EE][B180][TransferFineTune] evaluation started
+[E6][EE][B180][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=2686 | val_samples=1445 | batches=11 | max_epochs=15
+[E6][EE][B180][TransferFineTune] epoch 1/15 | train_loss=0.4744 | val_pr_auc=0.5378 | best_epoch=1 | best_pr_auc=0.5378 | epoch=0.7s | elapsed=0.7s | speed=4051.5 samples/s | eta=9.3s
+[E6][EE][B180][TransferFineTune] epoch 2/15 | train_loss=0.3027 | val_pr_auc=0.5503 | best_epoch=2 | best_pr_auc=0.5503 | epoch=0.7s | elapsed=1.3s | speed=4017.7 samples/s | eta=8.7s
+[E6][EE][B180][TransferFineTune] epoch 3/15 | train_loss=0.2779 | val_pr_auc=0.5536 | best_epoch=3 | best_pr_auc=0.5536 | epoch=0.7s | elapsed=2.0s | speed=4046.3 samples/s | eta=8.0s
+[E6][EE][B180][TransferFineTune] epoch 4/15 | train_loss=0.2494 | val_pr_auc=0.5588 | best_epoch=4 | best_pr_auc=0.5588 | epoch=0.7s | elapsed=2.7s | speed=4017.0 samples/s | eta=7.3s
+[E6][EE][B180][TransferFineTune] epoch 5/15 | train_loss=0.2484 | val_pr_auc=0.5557 | best_epoch=4 | best_pr_auc=0.5588 | epoch=0.7s | elapsed=3.3s | speed=4093.7 samples/s | eta=6.6s
+[E6][EE][B180][TransferFineTune] epoch 6/15 | train_loss=0.2245 | val_pr_auc=0.5568 | best_epoch=4 | best_pr_auc=0.5588 | epoch=0.7s | elapsed=4.0s | speed=4093.5 samples/s | eta=6.0s
+[E6][EE][B180][TransferFineTune] epoch 7/15 | train_loss=0.2294 | val_pr_auc=0.5634 | best_epoch=7 | best_pr_auc=0.5634 | epoch=0.7s | elapsed=4.7s | speed=3888.8 samples/s | eta=5.3s
+[E6][EE][B180][TransferFineTune] epoch 8/15 | train_loss=0.2119 | val_pr_auc=0.5674 | best_epoch=8 | best_pr_auc=0.5674 | epoch=0.7s | elapsed=5.3s | speed=4044.0 samples/s | eta=4.7s
+[E6][EE][B180][TransferFineTune] epoch 9/15 | train_loss=0.1979 | val_pr_auc=0.5720 | best_epoch=9 | best_pr_auc=0.5720 | epoch=0.7s | elapsed=6.0s | speed=4074.7 samples/s | eta=4.0s
+[E6][EE][B180][TransferFineTune] epoch 10/15 | train_loss=0.2031 | val_pr_auc=0.5750 | best_epoch=10 | best_pr_auc=0.5750 | epoch=0.7s | elapsed=6.6s | speed=4107.1 samples/s | eta=3.3s
+[E6][EE][B180][TransferFineTune] epoch 11/15 | train_loss=0.1855 | val_pr_auc=0.5786 | best_epoch=11 | best_pr_auc=0.5786 | epoch=0.7s | elapsed=7.3s | speed=4040.8 samples/s | eta=2.7s
+[E6][EE][B180][TransferFineTune] epoch 12/15 | train_loss=0.1754 | val_pr_auc=0.5804 | best_epoch=12 | best_pr_auc=0.5804 | epoch=0.6s | elapsed=8.0s | speed=4173.2 samples/s | eta=2.0s
+[E6][EE][B180][TransferFineTune] epoch 13/15 | train_loss=0.1712 | val_pr_auc=0.5816 | best_epoch=13 | best_pr_auc=0.5816 | epoch=0.7s | elapsed=8.6s | speed=4033.7 samples/s | eta=1.3s
+[E6][EE][B180][TransferFineTune] epoch 14/15 | train_loss=0.1681 | val_pr_auc=0.5831 | best_epoch=14 | best_pr_auc=0.5831 | epoch=0.7s | elapsed=9.3s | speed=4065.1 samples/s | eta=0.7s
+[E6][EE][B180][TransferFineTune] epoch 15/15 | train_loss=0.1678 | val_pr_auc=0.5859 | best_epoch=15 | best_pr_auc=0.5859 | epoch=0.6s | elapsed=9.9s | speed=4178.5 samples/s | eta=0.0s
+[E6][EE][B180][TransferFineTune] sequence training completed | best_epoch=15 | best_pr_auc=0.5859 | elapsed=9.9s
+[E6][EE][B180][TransferFineTune] evaluation completed | pr_auc=0.0718 | transfer_gain=0.0468 | elapsed=10.7s
+[E6][EE][B180] budget 2/2 completed | step=23.4s | elapsed=33.8s | eta=0.0s | transfer_pr_auc=0.0718
+[E6][EE] country 2/5 completed | step=34.4s | elapsed=00:01:01 | eta=00:01:32 | budgets=2
+[E6][LT] country 3/5 started | test_samples=4227
+[E6][LT][ZeroShot] evaluation started
+[E6][LT][ZeroShot] evaluation completed | pr_auc=0.0565 | elapsed=0.6s
+[E6][LT][B90] budget 1/2 started | train_samples=650 | val_samples=634
+[E6][LT][B90][TargetOnly] evaluation started
+[E6][LT][B90][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=650 | val_samples=634 | batches=3 | max_epochs=30
+[E6][LT][B90][TargetOnly] epoch 1/30 | train_loss=1.2840 | val_pr_auc=0.4591 | best_epoch=1 | best_pr_auc=0.4591 | epoch=0.3s | elapsed=0.3s | speed=2496.0 samples/s | eta=7.6s
+[E6][LT][B90][TargetOnly] epoch 2/30 | train_loss=1.1989 | val_pr_auc=0.4824 | best_epoch=2 | best_pr_auc=0.4824 | epoch=0.3s | elapsed=0.5s | speed=2261.3 samples/s | eta=7.7s
+[E6][LT][B90][TargetOnly] epoch 3/30 | train_loss=1.0884 | val_pr_auc=0.4918 | best_epoch=3 | best_pr_auc=0.4918 | epoch=0.3s | elapsed=0.8s | speed=2367.6 samples/s | eta=7.4s
+[E6][LT][B90][TargetOnly] epoch 4/30 | train_loss=0.9066 | val_pr_auc=0.4817 | best_epoch=3 | best_pr_auc=0.4918 | epoch=0.3s | elapsed=1.1s | speed=2480.6 samples/s | eta=7.1s
+[E6][LT][B90][TargetOnly] epoch 5/30 | train_loss=0.6866 | val_pr_auc=0.4619 | best_epoch=3 | best_pr_auc=0.4918 | epoch=0.2s | elapsed=1.3s | speed=2762.3 samples/s | eta=6.6s
+[E6][LT][B90][TargetOnly] epoch 6/30 | train_loss=0.5439 | val_pr_auc=0.4993 | best_epoch=6 | best_pr_auc=0.4993 | epoch=0.2s | elapsed=1.5s | speed=3174.9 samples/s | eta=6.1s
+[E6][LT][B90][TargetOnly] epoch 7/30 | train_loss=0.4624 | val_pr_auc=0.5447 | best_epoch=7 | best_pr_auc=0.5447 | epoch=0.2s | elapsed=1.7s | speed=3138.6 samples/s | eta=5.7s
+[E6][LT][B90][TargetOnly] epoch 8/30 | train_loss=0.3790 | val_pr_auc=0.5580 | best_epoch=8 | best_pr_auc=0.5580 | epoch=0.2s | elapsed=1.9s | speed=3156.6 samples/s | eta=5.3s
+[E6][LT][B90][TargetOnly] epoch 9/30 | train_loss=0.3598 | val_pr_auc=0.5785 | best_epoch=9 | best_pr_auc=0.5785 | epoch=0.3s | elapsed=2.2s | speed=2581.2 samples/s | eta=5.1s
+[E6][LT][B90][TargetOnly] epoch 10/30 | train_loss=0.3473 | val_pr_auc=0.5971 | best_epoch=10 | best_pr_auc=0.5971 | epoch=0.3s | elapsed=2.5s | speed=2194.2 samples/s | eta=5.0s
+[E6][LT][B90][TargetOnly] epoch 11/30 | train_loss=0.3663 | val_pr_auc=0.6168 | best_epoch=11 | best_pr_auc=0.6168 | epoch=0.2s | elapsed=2.7s | speed=2715.7 samples/s | eta=4.7s
+[E6][LT][B90][TargetOnly] epoch 12/30 | train_loss=0.3182 | val_pr_auc=0.6390 | best_epoch=12 | best_pr_auc=0.6390 | epoch=0.2s | elapsed=2.9s | speed=3120.3 samples/s | eta=4.4s
+[E6][LT][B90][TargetOnly] epoch 13/30 | train_loss=0.2849 | val_pr_auc=0.6748 | best_epoch=13 | best_pr_auc=0.6748 | epoch=0.2s | elapsed=3.1s | speed=3190.6 samples/s | eta=4.1s
+[E6][LT][B90][TargetOnly] epoch 14/30 | train_loss=0.3645 | val_pr_auc=0.6789 | best_epoch=14 | best_pr_auc=0.6789 | epoch=0.2s | elapsed=3.3s | speed=3079.6 samples/s | eta=3.8s
+[E6][LT][B90][TargetOnly] epoch 15/30 | train_loss=0.3159 | val_pr_auc=0.6871 | best_epoch=15 | best_pr_auc=0.6871 | epoch=0.2s | elapsed=3.6s | speed=3153.7 samples/s | eta=3.6s
+[E6][LT][B90][TargetOnly] epoch 16/30 | train_loss=0.2788 | val_pr_auc=0.6679 | best_epoch=15 | best_pr_auc=0.6871 | epoch=0.2s | elapsed=3.8s | speed=2701.5 samples/s | eta=3.3s
+[E6][LT][B90][TargetOnly] epoch 17/30 | train_loss=0.3574 | val_pr_auc=0.6836 | best_epoch=15 | best_pr_auc=0.6871 | epoch=0.2s | elapsed=4.0s | speed=3202.5 samples/s | eta=3.1s
+[E6][LT][B90][TargetOnly] epoch 18/30 | train_loss=0.2338 | val_pr_auc=0.6894 | best_epoch=18 | best_pr_auc=0.6894 | epoch=0.2s | elapsed=4.2s | speed=3014.8 samples/s | eta=2.8s
+[E6][LT][B90][TargetOnly] epoch 19/30 | train_loss=0.2523 | val_pr_auc=0.6826 | best_epoch=18 | best_pr_auc=0.6894 | epoch=0.2s | elapsed=4.4s | speed=3045.3 samples/s | eta=2.6s
+[E6][LT][B90][TargetOnly] epoch 20/30 | train_loss=0.2169 | val_pr_auc=0.6838 | best_epoch=18 | best_pr_auc=0.6894 | epoch=0.2s | elapsed=4.6s | speed=3093.6 samples/s | eta=2.3s
+[E6][LT][B90][TargetOnly] epoch 21/30 | train_loss=0.2019 | val_pr_auc=0.6806 | best_epoch=18 | best_pr_auc=0.6894 | epoch=0.2s | elapsed=4.8s | speed=3131.0 samples/s | eta=2.1s
+[E6][LT][B90][TargetOnly] epoch 22/30 | train_loss=0.1926 | val_pr_auc=0.6801 | best_epoch=18 | best_pr_auc=0.6894 | epoch=0.2s | elapsed=5.0s | speed=3235.5 samples/s | eta=1.8s
+[E6][LT][B90][TargetOnly] epoch 23/30 | train_loss=0.1753 | val_pr_auc=0.6808 | best_epoch=18 | best_pr_auc=0.6894 | epoch=0.2s | elapsed=5.3s | speed=3128.9 samples/s | eta=1.6s
+[E6][LT][B90][TargetOnly] early stopping triggered | epoch=23/30 | patience=5 | best_epoch=18 | best_pr_auc=0.6894
+[E6][LT][B90][TargetOnly] sequence training completed | best_epoch=18 | best_pr_auc=0.6894 | elapsed=5.3s
+[E6][LT][B90][TargetOnly] evaluation completed | pr_auc=0.0175 | elapsed=6.0s
+[E6][LT][B90][TransferFineTune] evaluation started
+[E6][LT][B90][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=650 | val_samples=634 | batches=3 | max_epochs=15
+[E6][LT][B90][TransferFineTune] epoch 1/15 | train_loss=0.5101 | val_pr_auc=0.6559 | best_epoch=1 | best_pr_auc=0.6559 | epoch=0.2s | elapsed=0.2s | speed=3082.4 samples/s | eta=3.0s
+[E6][LT][B90][TransferFineTune] epoch 2/15 | train_loss=0.4868 | val_pr_auc=0.6607 | best_epoch=2 | best_pr_auc=0.6607 | epoch=0.2s | elapsed=0.4s | speed=3104.3 samples/s | eta=2.7s
+[E6][LT][B90][TransferFineTune] epoch 3/15 | train_loss=0.4618 | val_pr_auc=0.6681 | best_epoch=3 | best_pr_auc=0.6681 | epoch=0.2s | elapsed=0.6s | speed=2986.2 samples/s | eta=2.6s
+[E6][LT][B90][TransferFineTune] epoch 4/15 | train_loss=0.4391 | val_pr_auc=0.6683 | best_epoch=4 | best_pr_auc=0.6683 | epoch=0.2s | elapsed=0.8s | speed=3155.1 samples/s | eta=2.3s
+[E6][LT][B90][TransferFineTune] epoch 5/15 | train_loss=0.4266 | val_pr_auc=0.6687 | best_epoch=5 | best_pr_auc=0.6687 | epoch=0.2s | elapsed=1.1s | speed=3135.9 samples/s | eta=2.1s
+[E6][LT][B90][TransferFineTune] epoch 6/15 | train_loss=0.4199 | val_pr_auc=0.6708 | best_epoch=6 | best_pr_auc=0.6708 | epoch=0.3s | elapsed=1.3s | speed=2369.5 samples/s | eta=2.0s
+[E6][LT][B90][TransferFineTune] epoch 7/15 | train_loss=0.4128 | val_pr_auc=0.6676 | best_epoch=6 | best_pr_auc=0.6708 | epoch=0.3s | elapsed=1.6s | speed=2195.2 samples/s | eta=1.9s
+[E6][LT][B90][TransferFineTune] epoch 8/15 | train_loss=0.3775 | val_pr_auc=0.6679 | best_epoch=6 | best_pr_auc=0.6708 | epoch=0.3s | elapsed=1.9s | speed=2209.2 samples/s | eta=1.7s
+[E6][LT][B90][TransferFineTune] epoch 9/15 | train_loss=0.3947 | val_pr_auc=0.6657 | best_epoch=6 | best_pr_auc=0.6708 | epoch=0.2s | elapsed=2.1s | speed=3111.3 samples/s | eta=1.4s
+[E6][LT][B90][TransferFineTune] early stopping triggered | epoch=9/15 | patience=3 | best_epoch=6 | best_pr_auc=0.6708
+[E6][LT][B90][TransferFineTune] sequence training completed | best_epoch=6 | best_pr_auc=0.6708 | elapsed=2.1s
+[E6][LT][B90][TransferFineTune] evaluation completed | pr_auc=0.0509 | transfer_gain=0.0335 | elapsed=2.9s
+[E6][LT][B90] budget 1/2 completed | step=8.9s | elapsed=8.9s | eta=8.9s | transfer_pr_auc=0.0509
+[E6][LT][B180] budget 2/2 started | train_samples=650 | val_samples=643
+[E6][LT][B180][TargetOnly] evaluation started
+[E6][LT][B180][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=650 | val_samples=643 | batches=3 | max_epochs=30
+[E6][LT][B180][TargetOnly] epoch 1/30 | train_loss=1.2874 | val_pr_auc=0.4686 | best_epoch=1 | best_pr_auc=0.4686 | epoch=0.2s | elapsed=0.2s | speed=3026.3 samples/s | eta=6.3s
+[E6][LT][B180][TargetOnly] epoch 2/30 | train_loss=1.1945 | val_pr_auc=0.4795 | best_epoch=2 | best_pr_auc=0.4795 | epoch=0.2s | elapsed=0.4s | speed=2870.1 samples/s | eta=6.2s
+[E6][LT][B180][TargetOnly] epoch 3/30 | train_loss=1.0537 | val_pr_auc=0.4672 | best_epoch=2 | best_pr_auc=0.4795 | epoch=0.3s | elapsed=0.7s | speed=2355.8 samples/s | eta=6.5s
+[E6][LT][B180][TargetOnly] epoch 4/30 | train_loss=0.8589 | val_pr_auc=0.4256 | best_epoch=2 | best_pr_auc=0.4795 | epoch=0.3s | elapsed=1.0s | speed=2191.0 samples/s | eta=6.6s
+[E6][LT][B180][TargetOnly] epoch 5/30 | train_loss=0.6286 | val_pr_auc=0.3837 | best_epoch=2 | best_pr_auc=0.4795 | epoch=0.3s | elapsed=1.3s | speed=2202.1 samples/s | eta=6.6s
+[E6][LT][B180][TargetOnly] epoch 6/30 | train_loss=0.5223 | val_pr_auc=0.4251 | best_epoch=2 | best_pr_auc=0.4795 | epoch=0.2s | elapsed=1.5s | speed=3119.7 samples/s | eta=6.1s
+[E6][LT][B180][TargetOnly] epoch 7/30 | train_loss=0.4249 | val_pr_auc=0.4857 | best_epoch=7 | best_pr_auc=0.4857 | epoch=0.2s | elapsed=1.7s | speed=3131.5 samples/s | eta=5.7s
+[E6][LT][B180][TargetOnly] epoch 8/30 | train_loss=0.3743 | val_pr_auc=0.4911 | best_epoch=8 | best_pr_auc=0.4911 | epoch=0.2s | elapsed=1.9s | speed=3061.7 samples/s | eta=5.3s
+[E6][LT][B180][TargetOnly] epoch 9/30 | train_loss=0.3512 | val_pr_auc=0.5196 | best_epoch=9 | best_pr_auc=0.5196 | epoch=0.2s | elapsed=2.2s | speed=3035.5 samples/s | eta=5.0s
+[E6][LT][B180][TargetOnly] epoch 10/30 | train_loss=0.2724 | val_pr_auc=0.5393 | best_epoch=10 | best_pr_auc=0.5393 | epoch=0.2s | elapsed=2.4s | speed=2693.6 samples/s | eta=4.8s
+[E6][LT][B180][TargetOnly] epoch 11/30 | train_loss=0.3069 | val_pr_auc=0.5463 | best_epoch=11 | best_pr_auc=0.5463 | epoch=0.2s | elapsed=2.6s | speed=2682.9 samples/s | eta=4.6s
+[E6][LT][B180][TargetOnly] epoch 12/30 | train_loss=0.2561 | val_pr_auc=0.5431 | best_epoch=11 | best_pr_auc=0.5463 | epoch=0.2s | elapsed=2.9s | speed=2870.9 samples/s | eta=4.3s
+[E6][LT][B180][TargetOnly] epoch 13/30 | train_loss=0.2776 | val_pr_auc=0.5664 | best_epoch=13 | best_pr_auc=0.5664 | epoch=0.2s | elapsed=3.1s | speed=3043.7 samples/s | eta=4.0s
+[E6][LT][B180][TargetOnly] epoch 14/30 | train_loss=0.2313 | val_pr_auc=0.5822 | best_epoch=14 | best_pr_auc=0.5822 | epoch=0.2s | elapsed=3.3s | speed=3014.9 samples/s | eta=3.8s
+[E6][LT][B180][TargetOnly] epoch 15/30 | train_loss=0.2163 | val_pr_auc=0.5971 | best_epoch=15 | best_pr_auc=0.5971 | epoch=0.2s | elapsed=3.5s | speed=2990.8 samples/s | eta=3.5s
+[E6][LT][B180][TargetOnly] epoch 16/30 | train_loss=0.1919 | val_pr_auc=0.6126 | best_epoch=16 | best_pr_auc=0.6126 | epoch=0.2s | elapsed=3.7s | speed=3075.8 samples/s | eta=3.3s
+[E6][LT][B180][TargetOnly] epoch 17/30 | train_loss=0.1896 | val_pr_auc=0.6295 | best_epoch=17 | best_pr_auc=0.6295 | epoch=0.2s | elapsed=3.9s | speed=3125.2 samples/s | eta=3.0s
+[E6][LT][B180][TargetOnly] epoch 18/30 | train_loss=0.1703 | val_pr_auc=0.6458 | best_epoch=18 | best_pr_auc=0.6458 | epoch=0.2s | elapsed=4.1s | speed=3107.5 samples/s | eta=2.8s
+[E6][LT][B180][TargetOnly] epoch 19/30 | train_loss=0.1595 | val_pr_auc=0.6511 | best_epoch=19 | best_pr_auc=0.6511 | epoch=0.2s | elapsed=4.4s | speed=3061.4 samples/s | eta=2.5s
+[E6][LT][B180][TargetOnly] epoch 20/30 | train_loss=0.1823 | val_pr_auc=0.6565 | best_epoch=20 | best_pr_auc=0.6565 | epoch=0.2s | elapsed=4.6s | speed=2984.6 samples/s | eta=2.3s
+[E6][LT][B180][TargetOnly] epoch 21/30 | train_loss=0.1843 | val_pr_auc=0.6635 | best_epoch=21 | best_pr_auc=0.6635 | epoch=0.2s | elapsed=4.8s | speed=3012.9 samples/s | eta=2.1s
+[E6][LT][B180][TargetOnly] epoch 22/30 | train_loss=0.1712 | val_pr_auc=0.6666 | best_epoch=22 | best_pr_auc=0.6666 | epoch=0.2s | elapsed=5.0s | speed=3028.4 samples/s | eta=1.8s
+[E6][LT][B180][TargetOnly] epoch 23/30 | train_loss=0.1576 | val_pr_auc=0.6673 | best_epoch=23 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=5.2s | speed=3129.7 samples/s | eta=1.6s
+[E6][LT][B180][TargetOnly] epoch 24/30 | train_loss=0.1459 | val_pr_auc=0.6636 | best_epoch=23 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=5.4s | speed=3231.4 samples/s | eta=1.4s
+[E6][LT][B180][TargetOnly] epoch 25/30 | train_loss=0.2053 | val_pr_auc=0.6600 | best_epoch=23 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=5.6s | speed=3219.9 samples/s | eta=1.1s
+[E6][LT][B180][TargetOnly] epoch 26/30 | train_loss=0.1926 | val_pr_auc=0.6560 | best_epoch=23 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=5.8s | speed=3244.0 samples/s | eta=0.9s
+[E6][LT][B180][TargetOnly] epoch 27/30 | train_loss=0.1349 | val_pr_auc=0.6673 | best_epoch=27 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=6.0s | speed=3176.5 samples/s | eta=0.7s
+[E6][LT][B180][TargetOnly] epoch 28/30 | train_loss=0.1658 | val_pr_auc=0.6554 | best_epoch=27 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=6.2s | speed=3120.7 samples/s | eta=0.4s
+[E6][LT][B180][TargetOnly] epoch 29/30 | train_loss=0.1973 | val_pr_auc=0.6496 | best_epoch=27 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=6.5s | speed=2810.6 samples/s | eta=0.2s
+[E6][LT][B180][TargetOnly] epoch 30/30 | train_loss=0.2145 | val_pr_auc=0.6568 | best_epoch=27 | best_pr_auc=0.6673 | epoch=0.2s | elapsed=6.7s | speed=2667.9 samples/s | eta=0.0s
+[E6][LT][B180][TargetOnly] sequence training completed | best_epoch=27 | best_pr_auc=0.6673 | elapsed=6.7s
+[E6][LT][B180][TargetOnly] evaluation completed | pr_auc=0.0224 | elapsed=7.4s
+[E6][LT][B180][TransferFineTune] evaluation started
+[E6][LT][B180][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=650 | val_samples=643 | batches=3 | max_epochs=15
+[E6][LT][B180][TransferFineTune] epoch 1/15 | train_loss=0.5308 | val_pr_auc=0.6491 | best_epoch=1 | best_pr_auc=0.6491 | epoch=0.2s | elapsed=0.2s | speed=3170.5 samples/s | eta=2.9s
+[E6][LT][B180][TransferFineTune] epoch 2/15 | train_loss=0.5032 | val_pr_auc=0.6581 | best_epoch=2 | best_pr_auc=0.6581 | epoch=0.2s | elapsed=0.4s | speed=3221.8 samples/s | eta=2.7s
+[E6][LT][B180][TransferFineTune] epoch 3/15 | train_loss=0.4680 | val_pr_auc=0.6615 | best_epoch=3 | best_pr_auc=0.6615 | epoch=0.2s | elapsed=0.6s | speed=3232.5 samples/s | eta=2.4s
+[E6][LT][B180][TransferFineTune] epoch 4/15 | train_loss=0.4382 | val_pr_auc=0.6627 | best_epoch=4 | best_pr_auc=0.6627 | epoch=0.2s | elapsed=0.8s | speed=3184.5 samples/s | eta=2.2s
+[E6][LT][B180][TransferFineTune] epoch 5/15 | train_loss=0.4083 | val_pr_auc=0.6652 | best_epoch=5 | best_pr_auc=0.6652 | epoch=0.2s | elapsed=1.0s | speed=3207.0 samples/s | eta=2.0s
+[E6][LT][B180][TransferFineTune] epoch 6/15 | train_loss=0.4055 | val_pr_auc=0.6621 | best_epoch=5 | best_pr_auc=0.6652 | epoch=0.2s | elapsed=1.2s | speed=3130.8 samples/s | eta=1.8s
+[E6][LT][B180][TransferFineTune] epoch 7/15 | train_loss=0.4052 | val_pr_auc=0.6613 | best_epoch=5 | best_pr_auc=0.6652 | epoch=0.2s | elapsed=1.4s | speed=3109.4 samples/s | eta=1.6s
+[E6][LT][B180][TransferFineTune] epoch 8/15 | train_loss=0.3865 | val_pr_auc=0.6597 | best_epoch=5 | best_pr_auc=0.6652 | epoch=0.2s | elapsed=1.6s | speed=3179.3 samples/s | eta=1.4s
+[E6][LT][B180][TransferFineTune] early stopping triggered | epoch=8/15 | patience=3 | best_epoch=5 | best_pr_auc=0.6652
+[E6][LT][B180][TransferFineTune] sequence training completed | best_epoch=5 | best_pr_auc=0.6652 | elapsed=1.6s
+[E6][LT][B180][TransferFineTune] evaluation completed | pr_auc=0.0522 | transfer_gain=0.0298 | elapsed=2.4s
+[E6][LT][B180] budget 2/2 completed | step=9.8s | elapsed=18.8s | eta=0.0s | transfer_pr_auc=0.0522
+[E6][LT] country 3/5 completed | step=19.4s | elapsed=00:01:21 | eta=53.8s | budgets=2
+[E6][LV] country 4/5 started | test_samples=4299
+[E6][LV][ZeroShot] evaluation started
+[E6][LV][ZeroShot] evaluation completed | pr_auc=0.0665 | elapsed=0.6s
+[E6][LV][B90] budget 1/2 started | train_samples=1452 | val_samples=710
+[E6][LV][B90][TargetOnly] evaluation started
+[E6][LV][B90][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=1452 | val_samples=710 | batches=6 | max_epochs=30
+[E6][LV][B90][TargetOnly] epoch 1/30 | train_loss=1.2763 | val_pr_auc=0.5386 | best_epoch=1 | best_pr_auc=0.5386 | epoch=0.3s | elapsed=0.3s | speed=4192.0 samples/s | eta=10.1s
+[E6][LV][B90][TargetOnly] epoch 2/30 | train_loss=1.0464 | val_pr_auc=0.6034 | best_epoch=2 | best_pr_auc=0.6034 | epoch=0.3s | elapsed=0.7s | speed=4251.9 samples/s | eta=9.6s
+[E6][LV][B90][TargetOnly] epoch 3/30 | train_loss=0.7345 | val_pr_auc=0.6751 | best_epoch=3 | best_pr_auc=0.6751 | epoch=0.3s | elapsed=1.0s | speed=4214.9 samples/s | eta=9.3s
+[E6][LV][B90][TargetOnly] epoch 4/30 | train_loss=0.4984 | val_pr_auc=0.6557 | best_epoch=3 | best_pr_auc=0.6751 | epoch=0.3s | elapsed=1.4s | speed=4362.0 samples/s | eta=8.9s
+[E6][LV][B90][TargetOnly] epoch 5/30 | train_loss=0.4393 | val_pr_auc=0.6897 | best_epoch=5 | best_pr_auc=0.6897 | epoch=0.3s | elapsed=1.7s | speed=4289.3 samples/s | eta=8.5s
+[E6][LV][B90][TargetOnly] epoch 6/30 | train_loss=0.3774 | val_pr_auc=0.6695 | best_epoch=5 | best_pr_auc=0.6897 | epoch=0.3s | elapsed=2.0s | speed=4297.7 samples/s | eta=8.2s
+[E6][LV][B90][TargetOnly] epoch 7/30 | train_loss=0.3873 | val_pr_auc=0.6399 | best_epoch=5 | best_pr_auc=0.6897 | epoch=0.3s | elapsed=2.4s | speed=4240.6 samples/s | eta=7.8s
+[E6][LV][B90][TargetOnly] epoch 8/30 | train_loss=0.4192 | val_pr_auc=0.6543 | best_epoch=5 | best_pr_auc=0.6897 | epoch=0.4s | elapsed=2.7s | speed=4128.7 samples/s | eta=7.5s
+[E6][LV][B90][TargetOnly] epoch 9/30 | train_loss=0.2994 | val_pr_auc=0.6973 | best_epoch=9 | best_pr_auc=0.6973 | epoch=0.3s | elapsed=3.1s | speed=4246.2 samples/s | eta=7.2s
+[E6][LV][B90][TargetOnly] epoch 10/30 | train_loss=0.2874 | val_pr_auc=0.7261 | best_epoch=10 | best_pr_auc=0.7261 | epoch=0.3s | elapsed=3.4s | speed=4223.4 samples/s | eta=6.8s
+[E6][LV][B90][TargetOnly] epoch 11/30 | train_loss=0.2588 | val_pr_auc=0.7350 | best_epoch=11 | best_pr_auc=0.7350 | epoch=0.3s | elapsed=3.8s | speed=4278.6 samples/s | eta=6.5s
+[E6][LV][B90][TargetOnly] epoch 12/30 | train_loss=0.2399 | val_pr_auc=0.7337 | best_epoch=11 | best_pr_auc=0.7350 | epoch=0.3s | elapsed=4.1s | speed=4275.2 samples/s | eta=6.2s
+[E6][LV][B90][TargetOnly] epoch 13/30 | train_loss=0.2145 | val_pr_auc=0.7424 | best_epoch=13 | best_pr_auc=0.7424 | epoch=0.3s | elapsed=4.4s | speed=4249.1 samples/s | eta=5.8s
+[E6][LV][B90][TargetOnly] epoch 14/30 | train_loss=0.2255 | val_pr_auc=0.7365 | best_epoch=13 | best_pr_auc=0.7424 | epoch=0.3s | elapsed=4.8s | speed=4313.6 samples/s | eta=5.5s
+[E6][LV][B90][TargetOnly] epoch 15/30 | train_loss=0.2327 | val_pr_auc=0.7191 | best_epoch=13 | best_pr_auc=0.7424 | epoch=0.3s | elapsed=5.1s | speed=4163.5 samples/s | eta=5.1s
+[E6][LV][B90][TargetOnly] epoch 16/30 | train_loss=0.2055 | val_pr_auc=0.7243 | best_epoch=13 | best_pr_auc=0.7424 | epoch=0.3s | elapsed=5.5s | speed=4363.4 samples/s | eta=4.8s
+[E6][LV][B90][TargetOnly] epoch 17/30 | train_loss=0.2532 | val_pr_auc=0.7386 | best_epoch=13 | best_pr_auc=0.7424 | epoch=0.3s | elapsed=5.8s | speed=4226.3 samples/s | eta=4.4s
+[E6][LV][B90][TargetOnly] epoch 18/30 | train_loss=0.2083 | val_pr_auc=0.7369 | best_epoch=13 | best_pr_auc=0.7424 | epoch=0.3s | elapsed=6.1s | speed=4329.9 samples/s | eta=4.1s
+[E6][LV][B90][TargetOnly] early stopping triggered | epoch=18/30 | patience=5 | best_epoch=13 | best_pr_auc=0.7424
+[E6][LV][B90][TargetOnly] sequence training completed | best_epoch=13 | best_pr_auc=0.7424 | elapsed=6.1s
+[E6][LV][B90][TargetOnly] evaluation completed | pr_auc=0.0312 | elapsed=6.9s
+[E6][LV][B90][TransferFineTune] evaluation started
+[E6][LV][B90][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=1452 | val_samples=710 | batches=6 | max_epochs=15
+[E6][LV][B90][TransferFineTune] epoch 1/15 | train_loss=0.5133 | val_pr_auc=0.6828 | best_epoch=1 | best_pr_auc=0.6828 | epoch=0.4s | elapsed=0.4s | speed=4115.3 samples/s | eta=5.0s
+[E6][LV][B90][TransferFineTune] epoch 2/15 | train_loss=0.4478 | val_pr_auc=0.6962 | best_epoch=2 | best_pr_auc=0.6962 | epoch=0.3s | elapsed=0.7s | speed=4273.0 samples/s | eta=4.5s
+[E6][LV][B90][TransferFineTune] epoch 3/15 | train_loss=0.4129 | val_pr_auc=0.7022 | best_epoch=3 | best_pr_auc=0.7022 | epoch=0.3s | elapsed=1.0s | speed=4190.1 samples/s | eta=4.2s
+[E6][LV][B90][TransferFineTune] epoch 4/15 | train_loss=0.3700 | val_pr_auc=0.7055 | best_epoch=4 | best_pr_auc=0.7055 | epoch=0.3s | elapsed=1.4s | speed=4328.4 samples/s | eta=3.8s
+[E6][LV][B90][TransferFineTune] epoch 5/15 | train_loss=0.3497 | val_pr_auc=0.7128 | best_epoch=5 | best_pr_auc=0.7128 | epoch=0.3s | elapsed=1.7s | speed=4272.4 samples/s | eta=3.4s
+[E6][LV][B90][TransferFineTune] epoch 6/15 | train_loss=0.3625 | val_pr_auc=0.7147 | best_epoch=6 | best_pr_auc=0.7147 | epoch=0.3s | elapsed=2.1s | speed=4249.5 samples/s | eta=3.1s
+[E6][LV][B90][TransferFineTune] epoch 7/15 | train_loss=0.3449 | val_pr_auc=0.7262 | best_epoch=7 | best_pr_auc=0.7262 | epoch=0.3s | elapsed=2.4s | speed=4184.2 samples/s | eta=2.7s
+[E6][LV][B90][TransferFineTune] epoch 8/15 | train_loss=0.3207 | val_pr_auc=0.7281 | best_epoch=8 | best_pr_auc=0.7281 | epoch=0.3s | elapsed=2.7s | speed=4218.6 samples/s | eta=2.4s
+[E6][LV][B90][TransferFineTune] epoch 9/15 | train_loss=0.3101 | val_pr_auc=0.7320 | best_epoch=9 | best_pr_auc=0.7320 | epoch=0.3s | elapsed=3.1s | speed=4237.1 samples/s | eta=2.1s
+[E6][LV][B90][TransferFineTune] epoch 10/15 | train_loss=0.3014 | val_pr_auc=0.7364 | best_epoch=10 | best_pr_auc=0.7364 | epoch=0.3s | elapsed=3.4s | speed=4197.6 samples/s | eta=1.7s
+[E6][LV][B90][TransferFineTune] epoch 11/15 | train_loss=0.3058 | val_pr_auc=0.7413 | best_epoch=11 | best_pr_auc=0.7413 | epoch=0.3s | elapsed=3.8s | speed=4248.8 samples/s | eta=1.4s
+[E6][LV][B90][TransferFineTune] epoch 12/15 | train_loss=0.2857 | val_pr_auc=0.7420 | best_epoch=12 | best_pr_auc=0.7420 | epoch=0.4s | elapsed=4.2s | speed=3631.4 samples/s | eta=1.0s
+[E6][LV][B90][TransferFineTune] epoch 13/15 | train_loss=0.2822 | val_pr_auc=0.7464 | best_epoch=13 | best_pr_auc=0.7464 | epoch=0.4s | elapsed=4.5s | speed=4078.7 samples/s | eta=0.7s
+[E6][LV][B90][TransferFineTune] epoch 14/15 | train_loss=0.2734 | val_pr_auc=0.7478 | best_epoch=14 | best_pr_auc=0.7478 | epoch=0.4s | elapsed=4.9s | speed=3987.2 samples/s | eta=0.3s
+[E6][LV][B90][TransferFineTune] epoch 15/15 | train_loss=0.2915 | val_pr_auc=0.7485 | best_epoch=15 | best_pr_auc=0.7485 | epoch=0.4s | elapsed=5.3s | speed=3975.0 samples/s | eta=0.0s
+[E6][LV][B90][TransferFineTune] sequence training completed | best_epoch=15 | best_pr_auc=0.7485 | elapsed=5.3s
+[E6][LV][B90][TransferFineTune] evaluation completed | pr_auc=0.0668 | transfer_gain=0.0355 | elapsed=6.0s
+[E6][LV][B90] budget 1/2 completed | step=12.9s | elapsed=13.0s | eta=13.0s | transfer_pr_auc=0.0668
+[E6][LV][B180] budget 2/2 started | train_samples=2841 | val_samples=1445
+[E6][LV][B180][TargetOnly] evaluation started
+[E6][LV][B180][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=2841 | val_samples=1445 | batches=12 | max_epochs=30
+[E6][LV][B180][TargetOnly] epoch 1/30 | train_loss=1.2192 | val_pr_auc=0.3725 | best_epoch=1 | best_pr_auc=0.3725 | epoch=0.7s | elapsed=0.7s | speed=4126.9 samples/s | eta=20.0s
+[E6][LV][B180][TargetOnly] epoch 2/30 | train_loss=0.6043 | val_pr_auc=0.4645 | best_epoch=2 | best_pr_auc=0.4645 | epoch=0.7s | elapsed=1.4s | speed=4192.3 samples/s | eta=19.1s
+[E6][LV][B180][TargetOnly] epoch 3/30 | train_loss=0.4144 | val_pr_auc=0.4957 | best_epoch=3 | best_pr_auc=0.4957 | epoch=0.7s | elapsed=2.0s | speed=4186.9 samples/s | eta=18.4s
+[E6][LV][B180][TargetOnly] epoch 4/30 | train_loss=0.4166 | val_pr_auc=0.4239 | best_epoch=3 | best_pr_auc=0.4957 | epoch=0.7s | elapsed=2.7s | speed=4172.2 samples/s | eta=17.7s
+[E6][LV][B180][TargetOnly] epoch 5/30 | train_loss=0.3090 | val_pr_auc=0.4258 | best_epoch=3 | best_pr_auc=0.4957 | epoch=0.7s | elapsed=3.4s | speed=4105.2 samples/s | eta=17.1s
+[E6][LV][B180][TargetOnly] epoch 6/30 | train_loss=0.3334 | val_pr_auc=0.4263 | best_epoch=3 | best_pr_auc=0.4957 | epoch=0.7s | elapsed=4.1s | speed=4206.8 samples/s | eta=16.4s
+[E6][LV][B180][TargetOnly] epoch 7/30 | train_loss=0.5430 | val_pr_auc=0.3673 | best_epoch=3 | best_pr_auc=0.4957 | epoch=0.7s | elapsed=4.8s | speed=4168.9 samples/s | eta=15.7s
+[E6][LV][B180][TargetOnly] epoch 8/30 | train_loss=0.5138 | val_pr_auc=0.3675 | best_epoch=3 | best_pr_auc=0.4957 | epoch=0.7s | elapsed=5.5s | speed=4086.0 samples/s | eta=15.0s
+[E6][LV][B180][TargetOnly] early stopping triggered | epoch=8/30 | patience=5 | best_epoch=3 | best_pr_auc=0.4957
+[E6][LV][B180][TargetOnly] sequence training completed | best_epoch=3 | best_pr_auc=0.4957 | elapsed=5.5s
+[E6][LV][B180][TargetOnly] evaluation completed | pr_auc=0.0204 | elapsed=6.3s
+[E6][LV][B180][TransferFineTune] evaluation started
+[E6][LV][B180][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=2841 | val_samples=1445 | batches=12 | max_epochs=15
+[E6][LV][B180][TransferFineTune] epoch 1/15 | train_loss=0.3711 | val_pr_auc=0.6325 | best_epoch=1 | best_pr_auc=0.6325 | epoch=0.7s | elapsed=0.7s | speed=4170.7 samples/s | eta=9.5s
+[E6][LV][B180][TransferFineTune] epoch 2/15 | train_loss=0.2954 | val_pr_auc=0.6387 | best_epoch=2 | best_pr_auc=0.6387 | epoch=0.7s | elapsed=1.4s | speed=4156.3 samples/s | eta=8.9s
+[E6][LV][B180][TransferFineTune] epoch 3/15 | train_loss=0.2497 | val_pr_auc=0.6416 | best_epoch=3 | best_pr_auc=0.6416 | epoch=0.7s | elapsed=2.0s | speed=4216.3 samples/s | eta=8.2s
+[E6][LV][B180][TransferFineTune] epoch 4/15 | train_loss=0.2233 | val_pr_auc=0.6463 | best_epoch=4 | best_pr_auc=0.6463 | epoch=0.7s | elapsed=2.7s | speed=4094.2 samples/s | eta=7.5s
+[E6][LV][B180][TransferFineTune] epoch 5/15 | train_loss=0.2259 | val_pr_auc=0.6454 | best_epoch=4 | best_pr_auc=0.6463 | epoch=0.7s | elapsed=3.4s | speed=4066.8 samples/s | eta=6.9s
+[E6][LV][B180][TransferFineTune] epoch 6/15 | train_loss=0.2053 | val_pr_auc=0.6443 | best_epoch=4 | best_pr_auc=0.6463 | epoch=0.7s | elapsed=4.1s | speed=4204.8 samples/s | eta=6.2s
+[E6][LV][B180][TransferFineTune] epoch 7/15 | train_loss=0.1947 | val_pr_auc=0.6432 | best_epoch=4 | best_pr_auc=0.6463 | epoch=0.7s | elapsed=4.8s | speed=4157.7 samples/s | eta=5.5s
+[E6][LV][B180][TransferFineTune] early stopping triggered | epoch=7/15 | patience=3 | best_epoch=4 | best_pr_auc=0.6463
+[E6][LV][B180][TransferFineTune] sequence training completed | best_epoch=4 | best_pr_auc=0.6463 | elapsed=4.8s
+[E6][LV][B180][TransferFineTune] evaluation completed | pr_auc=0.0569 | transfer_gain=0.0365 | elapsed=5.7s
+[E6][LV][B180] budget 2/2 completed | step=12.0s | elapsed=25.0s | eta=0.0s | transfer_pr_auc=0.0569
+[E6][LV] country 4/5 completed | step=25.6s | elapsed=00:01:47 | eta=26.6s | budgets=2
+[E6][RO] country 5/5 started | test_samples=4378
+[E6][RO][ZeroShot] evaluation started
+[E6][RO][ZeroShot] evaluation completed | pr_auc=0.5387 | elapsed=0.7s
+[E6][RO][B90] budget 1/2 started | train_samples=1445 | val_samples=640
+[E6][RO][B90][TargetOnly] evaluation started
+[E6][RO][B90][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=1445 | val_samples=640 | batches=6 | max_epochs=30
+[E6][RO][B90][TargetOnly] epoch 1/30 | train_loss=1.2391 | val_pr_auc=0.7779 | best_epoch=1 | best_pr_auc=0.7779 | epoch=0.3s | elapsed=0.3s | speed=4180.9 samples/s | eta=10.1s
+[E6][RO][B90][TargetOnly] epoch 2/30 | train_loss=0.9912 | val_pr_auc=0.7770 | best_epoch=1 | best_pr_auc=0.7779 | epoch=0.3s | elapsed=0.7s | speed=4134.1 samples/s | eta=9.7s
+[E6][RO][B90][TargetOnly] epoch 3/30 | train_loss=0.6417 | val_pr_auc=0.8299 | best_epoch=3 | best_pr_auc=0.8299 | epoch=0.3s | elapsed=1.0s | speed=4187.3 samples/s | eta=9.4s
+[E6][RO][B90][TargetOnly] epoch 4/30 | train_loss=0.3746 | val_pr_auc=0.8734 | best_epoch=4 | best_pr_auc=0.8734 | epoch=0.3s | elapsed=1.4s | speed=4200.0 samples/s | eta=9.0s
+[E6][RO][B90][TargetOnly] epoch 5/30 | train_loss=0.3341 | val_pr_auc=0.8718 | best_epoch=4 | best_pr_auc=0.8734 | epoch=0.4s | elapsed=1.7s | speed=4128.2 samples/s | eta=8.7s
+[E6][RO][B90][TargetOnly] epoch 6/30 | train_loss=0.3132 | val_pr_auc=0.8883 | best_epoch=6 | best_pr_auc=0.8883 | epoch=0.3s | elapsed=2.1s | speed=4204.5 samples/s | eta=8.3s
+[E6][RO][B90][TargetOnly] epoch 7/30 | train_loss=0.3856 | val_pr_auc=0.8886 | best_epoch=7 | best_pr_auc=0.8886 | epoch=0.4s | elapsed=2.4s | speed=4077.1 samples/s | eta=8.0s
+[E6][RO][B90][TargetOnly] epoch 8/30 | train_loss=0.2421 | val_pr_auc=0.8720 | best_epoch=7 | best_pr_auc=0.8886 | epoch=0.4s | elapsed=2.8s | speed=3983.8 samples/s | eta=7.7s
+[E6][RO][B90][TargetOnly] epoch 9/30 | train_loss=0.2844 | val_pr_auc=0.8999 | best_epoch=9 | best_pr_auc=0.8999 | epoch=0.4s | elapsed=3.2s | speed=4088.0 samples/s | eta=7.4s
+[E6][RO][B90][TargetOnly] epoch 10/30 | train_loss=0.2715 | val_pr_auc=0.9088 | best_epoch=10 | best_pr_auc=0.9088 | epoch=0.4s | elapsed=3.5s | speed=3956.7 samples/s | eta=7.0s
+[E6][RO][B90][TargetOnly] epoch 11/30 | train_loss=0.2813 | val_pr_auc=0.9016 | best_epoch=10 | best_pr_auc=0.9088 | epoch=0.3s | elapsed=3.9s | speed=4167.7 samples/s | eta=6.7s
+[E6][RO][B90][TargetOnly] epoch 12/30 | train_loss=0.2933 | val_pr_auc=0.8973 | best_epoch=10 | best_pr_auc=0.9088 | epoch=0.3s | elapsed=4.2s | speed=4161.0 samples/s | eta=6.3s
+[E6][RO][B90][TargetOnly] epoch 13/30 | train_loss=0.2209 | val_pr_auc=0.9010 | best_epoch=10 | best_pr_auc=0.9088 | epoch=0.3s | elapsed=4.6s | speed=4164.7 samples/s | eta=6.0s
+[E6][RO][B90][TargetOnly] epoch 14/30 | train_loss=0.1953 | val_pr_auc=0.8864 | best_epoch=10 | best_pr_auc=0.9088 | epoch=0.4s | elapsed=4.9s | speed=4079.8 samples/s | eta=5.6s
+[E6][RO][B90][TargetOnly] epoch 15/30 | train_loss=0.1994 | val_pr_auc=0.8926 | best_epoch=10 | best_pr_auc=0.9088 | epoch=0.4s | elapsed=5.3s | speed=4047.4 samples/s | eta=5.3s
+[E6][RO][B90][TargetOnly] early stopping triggered | epoch=15/30 | patience=5 | best_epoch=10 | best_pr_auc=0.9088
+[E6][RO][B90][TargetOnly] sequence training completed | best_epoch=10 | best_pr_auc=0.9088 | elapsed=5.3s
+[E6][RO][B90][TargetOnly] evaluation completed | pr_auc=0.3656 | elapsed=6.1s
+[E6][RO][B90][TransferFineTune] evaluation started
+[E6][RO][B90][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=1445 | val_samples=640 | batches=6 | max_epochs=15
+[E6][RO][B90][TransferFineTune] epoch 1/15 | train_loss=0.3000 | val_pr_auc=0.8168 | best_epoch=1 | best_pr_auc=0.8168 | epoch=0.5s | elapsed=0.5s | speed=3100.4 samples/s | eta=6.5s
+[E6][RO][B90][TransferFineTune] epoch 2/15 | train_loss=0.2678 | val_pr_auc=0.8225 | best_epoch=2 | best_pr_auc=0.8225 | epoch=0.4s | elapsed=0.9s | speed=3318.1 samples/s | eta=5.9s
+[E6][RO][B90][TransferFineTune] epoch 3/15 | train_loss=0.2674 | val_pr_auc=0.8262 | best_epoch=3 | best_pr_auc=0.8262 | epoch=0.5s | elapsed=1.4s | speed=3081.2 samples/s | eta=5.5s
+[E6][RO][B90][TransferFineTune] epoch 4/15 | train_loss=0.2378 | val_pr_auc=0.8269 | best_epoch=4 | best_pr_auc=0.8269 | epoch=0.3s | elapsed=1.7s | speed=4300.4 samples/s | eta=4.7s
+[E6][RO][B90][TransferFineTune] epoch 5/15 | train_loss=0.2433 | val_pr_auc=0.8273 | best_epoch=5 | best_pr_auc=0.8273 | epoch=0.3s | elapsed=2.0s | speed=4242.1 samples/s | eta=4.1s
+[E6][RO][B90][TransferFineTune] epoch 6/15 | train_loss=0.2244 | val_pr_auc=0.8411 | best_epoch=6 | best_pr_auc=0.8411 | epoch=0.4s | elapsed=2.4s | speed=4123.7 samples/s | eta=3.6s
+[E6][RO][B90][TransferFineTune] epoch 7/15 | train_loss=0.2166 | val_pr_auc=0.8501 | best_epoch=7 | best_pr_auc=0.8501 | epoch=0.5s | elapsed=2.9s | speed=3111.0 samples/s | eta=3.3s
+[E6][RO][B90][TransferFineTune] epoch 8/15 | train_loss=0.2083 | val_pr_auc=0.8491 | best_epoch=7 | best_pr_auc=0.8501 | epoch=0.4s | elapsed=3.2s | speed=4098.2 samples/s | eta=2.8s
+[E6][RO][B90][TransferFineTune] epoch 9/15 | train_loss=0.1967 | val_pr_auc=0.8499 | best_epoch=7 | best_pr_auc=0.8501 | epoch=0.3s | elapsed=3.6s | speed=4226.4 samples/s | eta=2.4s
+[E6][RO][B90][TransferFineTune] epoch 10/15 | train_loss=0.2034 | val_pr_auc=0.8516 | best_epoch=10 | best_pr_auc=0.8516 | epoch=0.3s | elapsed=3.9s | speed=4253.9 samples/s | eta=1.9s
+[E6][RO][B90][TransferFineTune] epoch 11/15 | train_loss=0.1890 | val_pr_auc=0.8597 | best_epoch=11 | best_pr_auc=0.8597 | epoch=0.3s | elapsed=4.2s | speed=4193.7 samples/s | eta=1.5s
+[E6][RO][B90][TransferFineTune] epoch 12/15 | train_loss=0.1842 | val_pr_auc=0.8611 | best_epoch=12 | best_pr_auc=0.8611 | epoch=0.4s | elapsed=4.6s | speed=4011.3 samples/s | eta=1.2s
+[E6][RO][B90][TransferFineTune] epoch 13/15 | train_loss=0.1850 | val_pr_auc=0.8629 | best_epoch=13 | best_pr_auc=0.8629 | epoch=0.3s | elapsed=4.9s | speed=4246.6 samples/s | eta=0.8s
+[E6][RO][B90][TransferFineTune] epoch 14/15 | train_loss=0.1746 | val_pr_auc=0.8556 | best_epoch=13 | best_pr_auc=0.8629 | epoch=0.3s | elapsed=5.3s | speed=4325.0 samples/s | eta=0.4s
+[E6][RO][B90][TransferFineTune] epoch 15/15 | train_loss=0.1873 | val_pr_auc=0.8582 | best_epoch=13 | best_pr_auc=0.8629 | epoch=0.3s | elapsed=5.6s | speed=4406.7 samples/s | eta=0.0s
+[E6][RO][B90][TransferFineTune] sequence training completed | best_epoch=13 | best_pr_auc=0.8629 | elapsed=5.6s
+[E6][RO][B90][TransferFineTune] evaluation completed | pr_auc=0.6950 | transfer_gain=0.3294 | elapsed=6.4s
+[E6][RO][B90] budget 1/2 completed | step=12.5s | elapsed=12.5s | eta=12.5s | transfer_pr_auc=0.6950
+[E6][RO][B180] budget 2/2 started | train_samples=1381 | val_samples=1374
+[E6][RO][B180][TargetOnly] evaluation started
+[E6][RO][B180][TargetOnly] sequence training start | model=GRU | device=cuda | train_samples=1381 | val_samples=1374 | batches=6 | max_epochs=30
+[E6][RO][B180][TargetOnly] epoch 1/30 | train_loss=1.2768 | val_pr_auc=0.7404 | best_epoch=1 | best_pr_auc=0.7404 | epoch=0.5s | elapsed=0.5s | speed=2949.8 samples/s | eta=13.6s
+[E6][RO][B180][TargetOnly] epoch 2/30 | train_loss=1.0752 | val_pr_auc=0.6910 | best_epoch=1 | best_pr_auc=0.7404 | epoch=0.4s | elapsed=0.9s | speed=3232.5 samples/s | eta=12.5s
+[E6][RO][B180][TargetOnly] epoch 3/30 | train_loss=0.7131 | val_pr_auc=0.6594 | best_epoch=1 | best_pr_auc=0.7404 | epoch=0.4s | elapsed=1.3s | speed=3175.4 samples/s | eta=12.0s
+[E6][RO][B180][TargetOnly] epoch 4/30 | train_loss=0.4133 | val_pr_auc=0.6889 | best_epoch=1 | best_pr_auc=0.7404 | epoch=0.5s | elapsed=1.8s | speed=2869.9 samples/s | eta=11.8s
+[E6][RO][B180][TargetOnly] epoch 5/30 | train_loss=0.2678 | val_pr_auc=0.6099 | best_epoch=1 | best_pr_auc=0.7404 | epoch=0.5s | elapsed=2.3s | speed=2920.4 samples/s | eta=11.4s
+[E6][RO][B180][TargetOnly] epoch 6/30 | train_loss=0.1875 | val_pr_auc=0.5987 | best_epoch=1 | best_pr_auc=0.7404 | epoch=0.5s | elapsed=2.8s | speed=2847.2 samples/s | eta=11.1s
+[E6][RO][B180][TargetOnly] early stopping triggered | epoch=6/30 | patience=5 | best_epoch=1 | best_pr_auc=0.7404
+[E6][RO][B180][TargetOnly] sequence training completed | best_epoch=1 | best_pr_auc=0.7404 | elapsed=2.8s
+[E6][RO][B180][TargetOnly] evaluation completed | pr_auc=0.3802 | elapsed=3.7s
+[E6][RO][B180][TransferFineTune] evaluation started
+[E6][RO][B180][TransferFineTune] sequence training start | model=GRU | device=cuda | train_samples=1381 | val_samples=1374 | batches=6 | max_epochs=15
+[E6][RO][B180][TransferFineTune] epoch 1/15 | train_loss=0.2815 | val_pr_auc=0.6673 | best_epoch=1 | best_pr_auc=0.6673 | epoch=0.5s | elapsed=0.5s | speed=2818.7 samples/s | eta=6.9s
+[E6][RO][B180][TransferFineTune] epoch 2/15 | train_loss=0.2380 | val_pr_auc=0.6670 | best_epoch=1 | best_pr_auc=0.6673 | epoch=0.5s | elapsed=1.0s | speed=2875.9 samples/s | eta=6.3s
+[E6][RO][B180][TransferFineTune] epoch 3/15 | train_loss=0.2350 | val_pr_auc=0.6667 | best_epoch=1 | best_pr_auc=0.6673 | epoch=0.4s | elapsed=1.4s | speed=3143.1 samples/s | eta=5.6s
+[E6][RO][B180][TransferFineTune] epoch 4/15 | train_loss=0.2157 | val_pr_auc=0.6697 | best_epoch=4 | best_pr_auc=0.6697 | epoch=0.4s | elapsed=1.9s | speed=3112.1 samples/s | eta=5.1s
+[E6][RO][B180][TransferFineTune] epoch 5/15 | train_loss=0.2069 | val_pr_auc=0.6755 | best_epoch=5 | best_pr_auc=0.6755 | epoch=0.4s | elapsed=2.3s | speed=3090.7 samples/s | eta=4.6s
+[E6][RO][B180][TransferFineTune] epoch 6/15 | train_loss=0.1851 | val_pr_auc=0.6831 | best_epoch=6 | best_pr_auc=0.6831 | epoch=0.5s | elapsed=2.8s | speed=2982.6 samples/s | eta=4.1s
+[E6][RO][B180][TransferFineTune] epoch 7/15 | train_loss=0.1878 | val_pr_auc=0.6861 | best_epoch=7 | best_pr_auc=0.6861 | epoch=0.4s | elapsed=3.2s | speed=3170.2 samples/s | eta=3.7s
+[E6][RO][B180][TransferFineTune] epoch 8/15 | train_loss=0.1853 | val_pr_auc=0.6909 | best_epoch=8 | best_pr_auc=0.6909 | epoch=0.4s | elapsed=3.6s | speed=3127.2 samples/s | eta=3.2s
+[E6][RO][B180][TransferFineTune] epoch 9/15 | train_loss=0.1848 | val_pr_auc=0.6947 | best_epoch=9 | best_pr_auc=0.6947 | epoch=0.4s | elapsed=4.1s | speed=3146.3 samples/s | eta=2.7s
+[E6][RO][B180][TransferFineTune] epoch 10/15 | train_loss=0.1702 | val_pr_auc=0.6972 | best_epoch=10 | best_pr_auc=0.6972 | epoch=0.4s | elapsed=4.5s | speed=3121.7 samples/s | eta=2.3s
+[E6][RO][B180][TransferFineTune] epoch 11/15 | train_loss=0.1666 | val_pr_auc=0.6956 | best_epoch=10 | best_pr_auc=0.6972 | epoch=0.4s | elapsed=5.0s | speed=3130.3 samples/s | eta=1.8s
+[E6][RO][B180][TransferFineTune] epoch 12/15 | train_loss=0.1497 | val_pr_auc=0.6973 | best_epoch=12 | best_pr_auc=0.6973 | epoch=0.4s | elapsed=5.4s | speed=3174.7 samples/s | eta=1.3s
+[E6][RO][B180][TransferFineTune] epoch 13/15 | train_loss=0.1549 | val_pr_auc=0.7050 | best_epoch=13 | best_pr_auc=0.7050 | epoch=0.4s | elapsed=5.8s | speed=3170.8 samples/s | eta=0.9s
+[E6][RO][B180][TransferFineTune] epoch 14/15 | train_loss=0.1401 | val_pr_auc=0.7045 | best_epoch=13 | best_pr_auc=0.7050 | epoch=0.4s | elapsed=6.3s | speed=3199.0 samples/s | eta=0.4s
+[E6][RO][B180][TransferFineTune] epoch 15/15 | train_loss=0.1344 | val_pr_auc=0.7048 | best_epoch=13 | best_pr_auc=0.7050 | epoch=0.4s | elapsed=6.7s | speed=3130.4 samples/s | eta=0.0s
+[E6][RO][B180][TransferFineTune] sequence training completed | best_epoch=13 | best_pr_auc=0.7050 | elapsed=6.7s
+[E6][RO][B180][TransferFineTune] evaluation completed | pr_auc=0.5224 | transfer_gain=0.1422 | elapsed=7.6s
+[E6][RO][B180] budget 2/2 completed | step=11.4s | elapsed=23.9s | eta=0.0s | transfer_pr_auc=0.5224
+[E6][RO] country 5/5 completed | step=24.6s | elapsed=00:02:11 | eta=0.0s | budgets=2
+[E6] experiment 1/1 completed | elapsed=00:06:07 | artifacts=/root/autodl-tmp/negative_price/e6/E6

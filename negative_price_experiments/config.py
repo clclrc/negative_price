@@ -94,9 +94,13 @@ TRANSFER_SOURCE_COUNTRIES = (
 )
 TRANSFER_TARGET_COUNTRIES = ("BG", "EE", "LT", "LV", "RO")
 
-TABULAR_MODELS = ("Majority", "LogisticRegression", "XGBoost")
-SEQUENCE_MODELS = ("GRU", "TCN")
-DEFAULT_MODELS = TABULAR_MODELS + SEQUENCE_MODELS
+CORE_TABULAR_MODELS = ("Majority", "LogisticRegression", "XGBoost")
+ADVANCED_TABULAR_MODELS = ("LightGBM", "CatBoost", "XGBoostWeightedCalibrated")
+TABULAR_MODELS = CORE_TABULAR_MODELS + ADVANCED_TABULAR_MODELS
+CORE_SEQUENCE_MODELS = ("GRU", "TCN")
+ADVANCED_SEQUENCE_MODELS = ("PatchTST",)
+SEQUENCE_MODELS = CORE_SEQUENCE_MODELS + ADVANCED_SEQUENCE_MODELS
+DEFAULT_MODELS = CORE_TABULAR_MODELS + CORE_SEQUENCE_MODELS
 
 
 def utc_ts(value: str) -> pd.Timestamp:
@@ -274,6 +278,38 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             feature_group="flows",
             horizon_hours=6,
             **common,
+        ),
+        "E7": ExperimentConfig(
+            name="E7",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            horizon_hours=6,
+            models=("LightGBM",),
+            **{key: value for key, value in common.items() if key != "models"},
+        ),
+        "E8": ExperimentConfig(
+            name="E8",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            horizon_hours=6,
+            models=("CatBoost",),
+            **{key: value for key, value in common.items() if key != "models"},
+        ),
+        "E9": ExperimentConfig(
+            name="E9",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            horizon_hours=6,
+            models=("XGBoostWeightedCalibrated",),
+            **{key: value for key, value in common.items() if key != "models"},
+        ),
+        "E10": ExperimentConfig(
+            name="E10",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            horizon_hours=6,
+            models=("PatchTST",),
+            **{key: value for key, value in common.items() if key != "models"},
         ),
     }
 

@@ -5,18 +5,29 @@ import random
 from dataclasses import dataclass
 
 import numpy as np
+from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 
 try:
+    import lightgbm as lgb
+except Exception:  # pragma: no cover - environment dependent
+    lgb = None
+
+try:
+    from catboost import CatBoostClassifier
+except Exception:  # pragma: no cover - environment dependent
+    CatBoostClassifier = None
+
+try:
     import xgboost as xgb
-except ModuleNotFoundError:  # pragma: no cover - environment dependent
+except Exception:  # pragma: no cover - environment dependent
     xgb = None
 
 try:
     import torch
     import torch.nn as nn
     from torch.utils.data import DataLoader
-except ModuleNotFoundError:  # pragma: no cover - environment dependent
+except Exception:  # pragma: no cover - environment dependent
     torch = None
     nn = None
     DataLoader = None
@@ -26,6 +37,8 @@ from .progress import ProgressReporter, estimate_remaining_seconds, format_durat
 from .runtime import get_cpu_worker_count
 
 
+HAS_LIGHTGBM = lgb is not None
+HAS_CATBOOST = CatBoostClassifier is not None
 HAS_XGBOOST = xgb is not None
 HAS_TORCH = torch is not None
 
@@ -39,6 +52,12 @@ class TorchTrainingOutcome:
     state_dict: dict[str, object]
     best_epoch: int
     best_score: float
+
+
+@dataclass(frozen=True)
+class ProbabilityCalibrator:
+    method: str
+    model: object | None = None
 
 
 def has_cuda() -> bool:
@@ -67,6 +86,20 @@ def get_xgboost_device() -> str:
     return "cpu"
 
 
+def require_lightgbm() -> None:
+    if not HAS_LIGHTGBM:
+        raise DependencyUnavailableError(
+            "lightgbm is required for the LightGBM model. Install it with `python3 -m pip install lightgbm`."
+        )
+
+
+def require_catboost() -> None:
+    if not HAS_CATBOOST:
+        raise DependencyUnavailableError(
+            "catboost is required for the CatBoost model. Install it with `python3 -m pip install catboost`."
+        )
+
+
 def require_xgboost() -> None:
     if not HAS_XGBOOST:
         raise DependencyUnavailableError(
@@ -77,7 +110,7 @@ def require_xgboost() -> None:
 def require_torch() -> None:
     if not HAS_TORCH:
         raise DependencyUnavailableError(
-            "torch is required for GRU/TCN models. Install it with `python3 -m pip install torch`."
+            "torch is required for GRU/TCN/PatchTST models. Install it with `python3 -m pip install torch`."
         )
 
 
@@ -112,6 +145,68 @@ def fit_logistic_regression(train_X: np.ndarray, train_y: np.ndarray, *, C: floa
 
 
 def predict_logistic_regression(model: LogisticRegression, X: np.ndarray) -> np.ndarray:
+    return model.predict_proba(X)[:, 1].astype(np.float32)
+
+
+def fit_lightgbm_classifier(
+    train_X: np.ndarray,
+    train_y: np.ndarray,
+    *,
+    num_leaves: int,
+    learning_rate: float,
+    n_estimators: int,
+    scale_pos_weight: float,
+    seed: int,
+) -> object:
+    require_lightgbm()
+    model = lgb.LGBMClassifier(
+        objective="binary",
+        n_estimators=n_estimators,
+        learning_rate=learning_rate,
+        num_leaves=num_leaves,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        scale_pos_weight=scale_pos_weight,
+        random_state=seed,
+        n_jobs=get_cpu_worker_count(max_workers=8),
+        verbosity=-1,
+    )
+    model.fit(train_X, train_y)
+    return model
+
+
+def predict_lightgbm(model: object, X: np.ndarray) -> np.ndarray:
+    return model.predict_proba(X)[:, 1].astype(np.float32)
+
+
+def fit_catboost_classifier(
+    train_X: np.ndarray,
+    train_y: np.ndarray,
+    *,
+    depth: int,
+    learning_rate: float,
+    n_estimators: int,
+    scale_pos_weight: float,
+    seed: int,
+) -> object:
+    require_catboost()
+    model = CatBoostClassifier(
+        loss_function="Logloss",
+        eval_metric="PRAUC",
+        iterations=n_estimators,
+        depth=depth,
+        learning_rate=learning_rate,
+        scale_pos_weight=scale_pos_weight,
+        random_seed=seed,
+        thread_count=get_cpu_worker_count(max_workers=8),
+        allow_writing_files=False,
+        verbose=False,
+    )
+    model.fit(train_X, train_y)
+    return model
+
+
+def predict_catboost(model: object, X: np.ndarray) -> np.ndarray:
     return model.predict_proba(X)[:, 1].astype(np.float32)
 
 
@@ -180,6 +275,40 @@ def fit_xgboost_final(
 
 def predict_xgboost(model: object, X: np.ndarray) -> np.ndarray:
     return model.predict_proba(X)[:, 1].astype(np.float32)
+
+
+def fit_probability_calibrator(y_true: np.ndarray, y_prob: np.ndarray, *, method: str) -> ProbabilityCalibrator:
+    y_true = np.asarray(y_true).astype(int)
+    y_prob = np.asarray(y_prob).astype(np.float32)
+    if y_true.size == 0 or np.unique(y_true).size < 2:
+        return ProbabilityCalibrator(method="identity")
+
+    clipped = np.clip(y_prob, 1e-6, 1.0 - 1e-6)
+    if method == "sigmoid":
+        logits = np.log(clipped / (1.0 - clipped)).reshape(-1, 1)
+        model = LogisticRegression(solver="lbfgs", max_iter=1000, random_state=0)
+        model.fit(logits, y_true)
+        return ProbabilityCalibrator(method=method, model=model)
+    if method == "isotonic":
+        model = IsotonicRegression(out_of_bounds="clip")
+        model.fit(clipped, y_true)
+        return ProbabilityCalibrator(method=method, model=model)
+    if method == "identity":
+        return ProbabilityCalibrator(method=method)
+    raise ValueError(f"Unsupported calibration method: {method}")
+
+
+def apply_probability_calibrator(calibrator: ProbabilityCalibrator, y_prob: np.ndarray) -> np.ndarray:
+    y_prob = np.asarray(y_prob).astype(np.float32)
+    clipped = np.clip(y_prob, 1e-6, 1.0 - 1e-6)
+    if calibrator.method == "identity" or calibrator.model is None:
+        return clipped.astype(np.float32)
+    if calibrator.method == "sigmoid":
+        logits = np.log(clipped / (1.0 - clipped)).reshape(-1, 1)
+        return calibrator.model.predict_proba(logits)[:, 1].astype(np.float32)
+    if calibrator.method == "isotonic":
+        return calibrator.model.predict(clipped).astype(np.float32)
+    raise ValueError(f"Unsupported calibration method: {calibrator.method}")
 
 
 if HAS_TORCH:
@@ -298,6 +427,79 @@ if HAS_TORCH:
             return self.classifier(features).squeeze(1)
 
 
+    class PatchTSTClassifier(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            patch_len: int = 6,
+            stride: int = 6,
+            d_model: int = 128,
+            nhead: int = 4,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+            embedding_dim: int = 8,
+            max_tokens: int = 64,
+        ) -> None:
+            super().__init__()
+            self.use_country_embedding = use_country_embedding
+            self.patch_len = patch_len
+            self.stride = stride
+            self.input_projection = nn.Linear(input_dim * patch_len, d_model)
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+            self.position_embedding = nn.Parameter(torch.zeros(1, max_tokens + 1, d_model))
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=d_model * 4,
+                dropout=dropout,
+                batch_first=True,
+                activation="gelu",
+            )
+            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+            if use_country_embedding:
+                self.country_embedding = nn.Embedding(num_countries, embedding_dim)
+                classifier_in = d_model + embedding_dim
+            else:
+                self.country_embedding = None
+                classifier_in = d_model
+            self.classifier = nn.Sequential(
+                nn.LayerNorm(classifier_in),
+                nn.Linear(classifier_in, 64),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1),
+            )
+
+        def _patchify(self, x: torch.Tensor) -> torch.Tensor:
+            batch_size, seq_len, feature_dim = x.shape
+            if seq_len < self.patch_len:
+                pad = self.patch_len - seq_len
+                x = torch.cat([x, x[:, -1:, :].repeat(1, pad, 1)], dim=1)
+                seq_len = x.shape[1]
+            remainder = (seq_len - self.patch_len) % self.stride
+            if remainder != 0:
+                pad = self.stride - remainder
+                x = torch.cat([x, x[:, -1:, :].repeat(1, pad, 1)], dim=1)
+            patches = x.unfold(dimension=1, size=self.patch_len, step=self.stride)
+            return patches.contiguous().view(batch_size, -1, self.patch_len * feature_dim)
+
+        def forward(self, x: torch.Tensor, country_idx: torch.Tensor) -> torch.Tensor:
+            patches = self._patchify(x)
+            tokens = self.input_projection(patches)
+            cls = self.cls_token.expand(tokens.shape[0], -1, -1)
+            tokens = torch.cat([cls, tokens], dim=1)
+            tokens = tokens + self.position_embedding[:, : tokens.shape[1], :]
+            encoded = self.encoder(tokens)
+            features = encoded[:, 0, :]
+            if self.use_country_embedding:
+                embedded = self.country_embedding(country_idx)
+                features = torch.cat([features, embedded], dim=1)
+            return self.classifier(features).squeeze(1)
+
+
 def build_sequence_model(
     model_name: str,
     *,
@@ -314,6 +516,12 @@ def build_sequence_model(
         )
     if model_name == "TCN":
         return TCNClassifier(
+            input_dim=input_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "PatchTST":
+        return PatchTSTClassifier(
             input_dim=input_dim,
             use_country_embedding=use_country_embedding,
             num_countries=num_countries,

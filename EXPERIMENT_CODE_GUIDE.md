@@ -17,13 +17,13 @@ Core causal rule:
 ## Main entrypoints
 
 - `run_negative_price_experiments.py`
-  Main CLI entrypoint for running `E1` to `E6`
+  Main CLI entrypoint for running `E1` to `E10`
 - `negative_price_experiments/config.py`
   Fixed experiment definitions, country sets, folds, and transfer protocol
 - `negative_price_experiments/data.py`
   Dataset loading, feature preparation, missing-value handling, sample generation, and tabular or sequence dataset builders
 - `negative_price_experiments/models.py`
-  Baselines, XGBoost wrapper, GRU, TCN, and sequence training utilities
+  Baselines, tree-model wrappers, calibration helpers, and sequence training utilities
 - `negative_price_experiments/metrics.py`
   PR-AUC, ROC-AUC, F1, threshold selection, and grouped summaries
 - `negative_price_experiments/pipeline.py`
@@ -37,6 +37,10 @@ Core causal rule:
 - `E4`: 15-market renewables-enhanced experiment, `h=24`
 - `E5`: 7-market cross-border-flow experiment, `h=6`
 - `E6`: transfer-learning experiment on public features with GRU only
+- `E7`: main 20-market public-feature benchmark with `LightGBM`, `h=6`
+- `E8`: main 20-market public-feature benchmark with `CatBoost`, `h=6`
+- `E9`: main 20-market public-feature benchmark with weighted and calibrated `XGBoost`, `h=6`
+- `E10`: main 20-market public-feature benchmark with `PatchTST`, `h=6`
 
 All default experiment definitions are created in:
 
@@ -61,6 +65,15 @@ python3 run_negative_price_experiments.py \
   --data-file ALL_COUNTRIES_2024_2025_WITH_ERA5.csv \
   --output-dir experiment_outputs \
   --experiments E6
+```
+
+Run the advanced post-`E6` model experiments:
+
+```bash
+python3 run_negative_price_experiments.py \
+  --data-file ALL_COUNTRIES_2024_2025_WITH_ERA5.csv \
+  --output-dir experiment_outputs \
+  --experiments E7,E8,E9,E10
 ```
 
 If optional ML dependencies are missing and you only want available models:
@@ -146,13 +159,13 @@ Calendar and time context:
 
 Country handling:
 
-- `E1-E5` tabular models use country one-hot
-- `E1-E5` sequence models use country embedding
+- `E1-E5,E7-E9` tabular models use country one-hot
+- `E1-E5,E10` sequence models use country embedding
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
-Default walk-forward validation folds for `E1-E5` are defined in `WALK_FORWARD_FOLDS`.
+Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -171,11 +184,21 @@ Implemented tabular models:
 - `Majority`
 - `LogisticRegression`
 - `XGBoost`
+- `LightGBM`
+- `CatBoost`
+- `XGBoostWeightedCalibrated`
 
 Implemented sequence models:
 
 - `GRU`
 - `TCN`
+- `PatchTST`
+
+Calibration notes for `XGBoostWeightedCalibrated`:
+
+- The base learner uses class-weighted XGBoost on a leakage-safe train subset
+- Probability calibration is fitted on a later holdout slice from the training window only
+- The calibrator currently supports `sigmoid` or `isotonic` mapping
 
 Sequence model implementation notes:
 

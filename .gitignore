@@ -24,7 +24,8 @@ ENV/
 
 # Local experiment outputs
 experiment_outputs/
-*.log
+experiment_outputs_*/
+
 
 # Large local caches
 entsoe_2024_2025_cache/
