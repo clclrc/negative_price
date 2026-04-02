@@ -72,3 +72,33 @@ Any future conversation, revision, analysis, or code change in this directory sh
 
 ## Code guide
 For experiment implementation details, code entrypoints, module responsibilities, artifact outputs, and extension rules, read [EXPERIMENT_CODE_GUIDE.md](./EXPERIMENT_CODE_GUIDE.md) before changing the experiment pipeline.
+
+## Direction log
+The latest experiment-direction judgment should be recorded in [EXPERIMENT_DIRECTION_NOTES.md](./EXPERIMENT_DIRECTION_NOTES.md).
+
+If a future conversation produces a materially updated view on:
+- which backbone should remain the main deep-learning line,
+- which experiment directions are feasible or not feasible,
+- what the recommended next experiment order should be,
+- or when a deferred direction such as hybrid modeling becomes justified,
+
+then synchronize that new judgment into `EXPERIMENT_DIRECTION_NOTES.md` so other threads can reuse the latest roadmap.
+
+## Experiment launch convention
+For future training-script launch commands, use the following shell format by default:
+
+```bash
+RUN_ID=$(date +%Y%m%d_%H%M%S)
+python run_negative_price_experiments.py \
+  --data-file ALL_COUNTRIES_2024_2025_WITH_ERA5.csv \
+  --output-dir "outputs/experiment_outputs_${RUN_ID}" \
+  --experiments <EXPERIMENT_IDS> \
+  --skip-unavailable-models
+```
+
+Notes:
+- Keep the `RUN_ID=$(date +%Y%m%d_%H%M%S)` line at the top of the launch snippet.
+- Keep the command in multi-line backslash format.
+- Replace `<EXPERIMENT_IDS>` with the required comma-separated experiment IDs.
+- Write outputs under the `outputs/` folder using the timestamped directory pattern `outputs/experiment_outputs_${RUN_ID}`.
+- Future responses that provide experiment start commands should follow this format unless the user explicitly requests a different one.

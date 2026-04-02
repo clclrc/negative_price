@@ -5,6 +5,11 @@ from unittest.mock import patch
 
 from negative_price_experiments.models import HAS_TORCH, build_sequence_model, get_preferred_torch_device
 
+if HAS_TORCH:
+    import torch
+
+    from negative_price_experiments.models import BinaryFocalLossWithLogits
+
 
 @unittest.skipUnless(HAS_TORCH, "torch is required for device-selection tests")
 class NegativePriceModelsDeviceTest(unittest.TestCase):
@@ -34,3 +39,17 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
             num_countries=0,
         )
         self.assertEqual(model.__class__.__name__, "PatchTSTClassifier")
+
+
+@unittest.skipUnless(HAS_TORCH, "torch is required for focal loss tests")
+class NegativePriceModelLossTest(unittest.TestCase):
+    def test_binary_focal_loss_with_logits_returns_finite_scalar(self) -> None:
+        logits = torch.tensor([0.2, -1.5, 2.1, -0.7], dtype=torch.float32)
+        targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float32)
+        pos_weight = torch.tensor([3.0], dtype=torch.float32)
+        loss_fn = BinaryFocalLossWithLogits(gamma=2.0, pos_weight=pos_weight)
+
+        loss = loss_fn(logits, targets)
+
+        self.assertTrue(torch.isfinite(loss))
+        self.assertEqual(loss.ndim, 0)

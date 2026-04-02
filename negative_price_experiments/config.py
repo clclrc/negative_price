@@ -148,6 +148,11 @@ class ExperimentConfig:
     primary_metric: str
     random_seed: int
     use_country_features: bool = True
+    sequence_learning_rate: float = 1e-3
+    sequence_max_epochs: int = 30
+    sequence_patience: int = 5
+    sequence_loss: str = "bce"
+    focal_gamma: float = 2.0
 
     @property
     def numeric_features(self) -> tuple[str, ...]:
@@ -336,6 +341,53 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             window_hours=168,
             horizon_hours=6,
             models=("TCN",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E14": ExperimentConfig(
+            name="E14",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            sequence_loss="focal",
+            focal_gamma=2.0,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E15A": ExperimentConfig(
+            name="E15A",
+            countries=RENEWABLE_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E15B": ExperimentConfig(
+            name="E15B",
+            countries=RENEWABLE_COUNTRIES,
+            feature_group="renewables",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E16A": ExperimentConfig(
+            name="E16A",
+            countries=FLOW_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E16B": ExperimentConfig(
+            name="E16B",
+            countries=FLOW_COUNTRIES,
+            feature_group="flows",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
         ),
     }

@@ -1277,7 +1277,7 @@ def _evaluate_sequence_model(
         scaler = prepared.fit_sequence_scaler(train)
         train_ds = prepared.build_sequence_dataset(train, scaler, include_country=config.use_country_features)
         val_ds = prepared.build_sequence_dataset(val, scaler, include_country=config.use_country_features)
-        learning_rate = 1e-3
+        learning_rate = config.sequence_learning_rate
         single_class_probability = _single_class_probability(train_ds.metadata["y_true"].to_numpy(dtype=int))
         if single_class_probability is not None:
             y_prob = predict_majority(single_class_probability, len(val_ds))
@@ -1295,8 +1295,10 @@ def _evaluate_sequence_model(
                 num_countries=len(config.countries),
                 random_seed=config.random_seed,
                 learning_rate=learning_rate,
-                max_epochs=30,
-                patience=5,
+                max_epochs=config.sequence_max_epochs,
+                patience=config.sequence_patience,
+                loss_name=config.sequence_loss,
+                focal_gamma=config.focal_gamma,
                 reporter=reporter,
                 progress_prefix=(config.name, model_name, fold.name),
             )
@@ -1340,7 +1342,9 @@ def _evaluate_sequence_model(
         "candidate": "default",
         "threshold": float(np.median(thresholds)),
         "epochs": int(np.median(best_epochs)),
-        "learning_rate": 1e-3,
+        "learning_rate": config.sequence_learning_rate,
+        "loss_name": config.sequence_loss,
+        "focal_gamma": config.focal_gamma,
     }
     return chosen, metrics_rows, prediction_frames
 
@@ -1529,6 +1533,8 @@ def _fit_and_score_final_model(
             random_seed=config.random_seed,
             learning_rate=chosen["learning_rate"],
             epochs=chosen["epochs"],
+            loss_name=chosen.get("loss_name", "bce"),
+            focal_gamma=chosen.get("focal_gamma", 2.0),
             reporter=reporter,
             progress_prefix=(config.name, model_name, "Final"),
         )

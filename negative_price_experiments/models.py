@@ -312,6 +312,26 @@ def apply_probability_calibrator(calibrator: ProbabilityCalibrator, y_prob: np.n
 
 
 if HAS_TORCH:
+    class BinaryFocalLossWithLogits(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(self, *, gamma: float = 2.0, pos_weight: "torch.Tensor | None" = None) -> None:
+            super().__init__()
+            self.gamma = gamma
+            self.pos_weight = pos_weight
+
+        def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+            targets = targets.float()
+            bce = nn.functional.binary_cross_entropy_with_logits(
+                logits,
+                targets,
+                pos_weight=self.pos_weight,
+                reduction="none",
+            )
+            probs = torch.sigmoid(logits)
+            pt = torch.where(targets > 0.5, probs, 1.0 - probs)
+            focal_factor = (1.0 - pt).pow(self.gamma)
+            return (focal_factor * bce).mean()
+
+
     class GRUClassifier(nn.Module):  # pragma: no cover - exercised through integration tests
         def __init__(
             self,
@@ -593,6 +613,8 @@ def train_sequence_model(
     learning_rate: float,
     max_epochs: int,
     patience: int,
+    loss_name: str = "bce",
+    focal_gamma: float = 2.0,
     init_state_dict: dict[str, object] | None = None,
     reporter: ProgressReporter | None = None,
     progress_prefix: tuple[str, ...] = (),
@@ -620,7 +642,7 @@ def train_sequence_model(
         (
             f"sequence training start | model={model_name} | device={device.type} "
             f"| train_samples={len(train_dataset)} | val_samples={len(val_dataset)} "
-            f"| batches={len(train_loader)} | max_epochs={max_epochs}"
+            f"| batches={len(train_loader)} | max_epochs={max_epochs} | loss={loss_name}"
         ),
     )
 
@@ -628,7 +650,12 @@ def train_sequence_model(
     positives = float(train_y.sum())
     negatives = float(train_y.size - positives)
     pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32, device=device)
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    if loss_name == "bce":
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    elif loss_name == "focal":
+        loss_fn = BinaryFocalLossWithLogits(gamma=focal_gamma, pos_weight=pos_weight)
+    else:
+        raise ValueError(f"Unsupported sequence loss: {loss_name}")
 
     best_score = float("-inf")
     best_epoch = 1
@@ -707,6 +734,8 @@ def fit_sequence_final(
     random_seed: int,
     learning_rate: float,
     epochs: int,
+    loss_name: str = "bce",
+    focal_gamma: float = 2.0,
     init_state_dict: dict[str, object] | None = None,
     reporter: ProgressReporter | None = None,
     progress_prefix: tuple[str, ...] = (),
@@ -732,7 +761,8 @@ def fit_sequence_final(
         progress_prefix,
         (
             f"final training start | model={model_name} | device={device.type} "
-            f"| train_samples={len(train_dataset)} | batches={len(train_loader)} | epochs={max(epochs, 1)}"
+            f"| train_samples={len(train_dataset)} | batches={len(train_loader)} "
+            f"| epochs={max(epochs, 1)} | loss={loss_name}"
         ),
     )
 
@@ -740,7 +770,12 @@ def fit_sequence_final(
     positives = float(train_y.sum())
     negatives = float(train_y.size - positives)
     pos_weight = torch.tensor([negatives / max(positives, 1.0)], dtype=torch.float32, device=device)
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    if loss_name == "bce":
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    elif loss_name == "focal":
+        loss_fn = BinaryFocalLossWithLogits(gamma=focal_gamma, pos_weight=pos_weight)
+    else:
+        raise ValueError(f"Unsupported sequence loss: {loss_name}")
 
     total_epochs = max(epochs, 1)
     for epoch in range(1, total_epochs + 1):

@@ -42,20 +42,23 @@ Core causal rule:
 - `E9`: main 20-market public-feature benchmark with weighted and calibrated `XGBoost`, `h=6`
 - `E10`: main 20-market public-feature benchmark with `PatchTST`, `h=6`
 
-Planned next-phase experiment IDs:
+Extended experiment IDs:
 
 - `E11`: main 20-market public-feature deep-learning experiment with `GRU`, `window=120`, `h=6`
 - `E12`: main 20-market public-feature deep-learning experiment with `GRU`, `window=168`, `h=6`
 - `E13`: main 20-market public-feature deep-learning experiment with `TCN`, `window=168`, `h=6`
-- `E14`: imbalance-aware extension of the best deep model selected from `E11-E13`
-- `E15`: renewables-enhanced extension of the best deep model selected from `E11-E13`, `h=6`
-- `E16`: cross-border-flow extension of the best deep model selected from `E11-E13`, `h=6`
+- `E14`: main 20-market public-feature `GRU` experiment with focal loss, `window=168`, `h=6`
+- `E15A`: 15-market public-feature `GRU` experiment, `window=168`, `h=6`
+- `E15B`: 15-market renewables-feature `GRU` experiment, `window=168`, `h=6`
+- `E16A`: 7-market public-feature `GRU` experiment, `window=168`, `h=6`
+- `E16B`: 7-market cross-border-flow `GRU` experiment, `window=168`, `h=6`
 
 Important:
 
-- `E11-E16` are currently planned experiments, not yet implemented defaults
-- `E14-E16` should not be fixed to one backbone in advance
-- the backbone and window used by `E14-E16` should be chosen based on the results of `E11-E13`
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, and `E16B` listed above are implemented config defaults
+- `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
+- `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
+- `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
 
 All default experiment definitions are created in:
 
@@ -94,7 +97,8 @@ python3 run_negative_price_experiments.py \
 Planned next deep-learning phase:
 
 - first run `E11-E13` to select the strongest deep sequence model and history window
-- then define `E14-E16` on top of that selected backbone
+- run `E14` as the imbalance-aware continuation of the selected `GRU + 168h` backbone
+- then compare richer-feature paired experiments `E15A/E15B` and `E16A/E16B`
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -181,13 +185,13 @@ Country handling:
 
 - `E1-E5,E7-E9` tabular models use country one-hot
 - `E1-E5,E10` sequence models use country embedding
-- planned `E11-E16` sequence experiments should also use country embedding unless a later design explicitly changes that
+- `E11-E14,E15A,E15B,E16A,E16B` sequence experiments also use country embedding
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
 Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
-Planned `E11-E16` should follow the same target-time-based fold protocol unless there is an explicitly documented ablation.
+`E11-E14,E15A,E15B,E16A,E16B` follow the same target-time-based fold protocol.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -228,7 +232,7 @@ Sequence model implementation notes:
 - Validation model selection uses best checkpoint by validation PR-AUC
 - Final full-train models are retrained from scratch using the selected epoch count
 - the current default sequence setup uses a `72` hour historical window in implemented configs
-- planned `E11-E13` explicitly test longer windows so the model can observe more historical hours before `t+h`
+- `E11-E14,E15A,E15B,E16A,E16B` explicitly test longer windows so the model can observe more historical hours before `t+h`
 
 Robustness behavior:
 
@@ -318,7 +322,8 @@ For the current roadmap:
 
 - implement `E11-E13` first
 - review their validation and test behavior
-- only then lock the exact design of `E14-E16`
+- use `E15A/E15B` and `E16A/E16B` as paired richer-feature follow-ups
+- only then lock the exact design of `E14` and any later hybrid extension
 
 ## Practical note on file placement
 
