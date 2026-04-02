@@ -17,7 +17,7 @@ Core causal rule:
 ## Main entrypoints
 
 - `run_negative_price_experiments.py`
-  Main CLI entrypoint for running `E1` to `E10`
+  Main CLI entrypoint for running the implemented experiment IDs
 - `negative_price_experiments/config.py`
   Fixed experiment definitions, country sets, folds, and transfer protocol
 - `negative_price_experiments/data.py`
@@ -41,6 +41,21 @@ Core causal rule:
 - `E8`: main 20-market public-feature benchmark with `CatBoost`, `h=6`
 - `E9`: main 20-market public-feature benchmark with weighted and calibrated `XGBoost`, `h=6`
 - `E10`: main 20-market public-feature benchmark with `PatchTST`, `h=6`
+
+Planned next-phase experiment IDs:
+
+- `E11`: main 20-market public-feature deep-learning experiment with `GRU`, `window=120`, `h=6`
+- `E12`: main 20-market public-feature deep-learning experiment with `GRU`, `window=168`, `h=6`
+- `E13`: main 20-market public-feature deep-learning experiment with `TCN`, `window=168`, `h=6`
+- `E14`: imbalance-aware extension of the best deep model selected from `E11-E13`
+- `E15`: renewables-enhanced extension of the best deep model selected from `E11-E13`, `h=6`
+- `E16`: cross-border-flow extension of the best deep model selected from `E11-E13`, `h=6`
+
+Important:
+
+- `E11-E16` are currently planned experiments, not yet implemented defaults
+- `E14-E16` should not be fixed to one backbone in advance
+- the backbone and window used by `E14-E16` should be chosen based on the results of `E11-E13`
 
 All default experiment definitions are created in:
 
@@ -75,6 +90,11 @@ python3 run_negative_price_experiments.py \
   --output-dir experiment_outputs \
   --experiments E7,E8,E9,E10
 ```
+
+Planned next deep-learning phase:
+
+- first run `E11-E13` to select the strongest deep sequence model and history window
+- then define `E14-E16` on top of that selected backbone
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -161,11 +181,13 @@ Country handling:
 
 - `E1-E5,E7-E9` tabular models use country one-hot
 - `E1-E5,E10` sequence models use country embedding
+- planned `E11-E16` sequence experiments should also use country embedding unless a later design explicitly changes that
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
 Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
+Planned `E11-E16` should follow the same target-time-based fold protocol unless there is an explicitly documented ablation.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -205,6 +227,8 @@ Sequence model implementation notes:
 - Training is CPU-compatible
 - Validation model selection uses best checkpoint by validation PR-AUC
 - Final full-train models are retrained from scratch using the selected epoch count
+- the current default sequence setup uses a `72` hour historical window in implemented configs
+- planned `E11-E13` explicitly test longer windows so the model can observe more historical hours before `t+h`
 
 Robustness behavior:
 
@@ -289,6 +313,12 @@ Preferred extension order:
 - add ablations second
 - add new sequence encoders third
 - only then add more advanced transfer variants
+
+For the current roadmap:
+
+- implement `E11-E13` first
+- review their validation and test behavior
+- only then lock the exact design of `E14-E16`
 
 ## Practical note on file placement
 

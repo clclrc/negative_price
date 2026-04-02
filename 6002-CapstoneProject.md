@@ -91,3 +91,54 @@ This project aims to contribute by:
 
 **Conclusion**  
 Negative electricity prices reflect a deep structural transformation in the European power system amid high renewable energy penetration. This project therefore proposes a deep learning-based event prediction framework that uses only past and current system information to predict future negative price events. By integrating market, operational, meteorological, and institutional data, the study aims to learn the system states associated with elevated future negative-price risk while maintaining a clear and leakage-free temporal design.
+
+# **Next Experiment Plan**
+
+The next experiment phase is designed to strengthen the deep learning track under the fixed forecasting setup. The main benchmark setting remains future negative-price event prediction with `h = 6`, leakage-free chronological splits, and inputs restricted to information available up to time `t`.
+
+The current implementation uses a rolling historical input window of `72` hours. In the plan below, a longer window means a longer history visible to the model, such as `120` or `168` past hours before the forecast anchor time.
+
+## **Phase 1: Identify the best deep learning backbone**
+
+The first step is to determine whether a longer historical window improves deep sequence modeling under the main `20-market + public features + h = 6` setting.
+
+1. `E11`: `GRU`, `window = 120`, `h = 6`, main 20-market public-feature setting.  
+   Goal: test whether extending the input window beyond `72` hours improves event prediction.
+2. `E12`: `GRU`, `window = 168`, `h = 6`, main 20-market public-feature setting.  
+   Goal: test whether one full week of historical context is more informative than shorter windows.
+3. `E13`: `TCN`, `window = 168`, `h = 6`, main 20-market public-feature setting.  
+   Goal: compare a convolutional temporal encoder against `GRU` under the longer-window setup.
+
+These three experiments are intended to answer two questions:
+
+* Does a longer input window improve deep learning performance for future negative-price event prediction?  
+* Which deep temporal encoder is the strongest candidate for follow-up experiments?
+
+## **Phase 2: Build on the best result from E11-E13**
+
+Experiments `E14-E16` should not be fixed to one architecture in advance. They should inherit the best-performing deep learning backbone and window length identified by `E11-E13`, using validation and test evidence under the same causal setup.
+
+4. `E14`: best model from `E11-E13` plus class-imbalance-focused training refinement.  
+   Suggested first option: focal loss or another imbalance-aware training strategy while keeping the same task definition.  
+   Goal: improve detection of relatively rare negative-price events and raise `PR-AUC`, `recall`, and `F1`.
+5. `E15`: best model from `E11-E13` applied to the renewables-enhanced feature setting with `h = 6`.  
+   Goal: test whether a stronger deep sequence model benefits more from richer renewable-related temporal signals.
+6. `E16`: best model from `E11-E13` applied to the cross-border-flow feature setting with `h = 6`.  
+   Goal: test whether the selected deep model can better exploit system-state information when transmission-flow variables are included.
+
+## **Evaluation logic for E11-E16**
+
+The evaluation protocol remains unchanged:
+
+* preserve target-time-based chronological splitting;
+* preserve leakage-free preprocessing and sample construction;
+* use future event classification rather than price regression;
+* compare models primarily by `PR-AUC`, with `F1`, `recall`, `ROC-AUC`, and balanced accuracy as supporting metrics;
+* inspect overall, monthly, and country-level stability rather than relying on one aggregate score only.
+
+The decision rule for continuation is:
+
+* `E11-E13` select the best deep model and best window length;
+* `E14-E16` extend that selected model rather than introducing unnecessary architectural changes at the same time.
+
+This staged design keeps the experiment story coherent: first identify whether longer historical context helps deep learning, then improve imbalance handling, and finally test whether the selected deep encoder gains more from richer system-condition feature groups.

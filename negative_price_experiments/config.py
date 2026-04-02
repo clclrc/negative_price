@@ -311,6 +311,33 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             models=("PatchTST",),
             **{key: value for key, value in common.items() if key != "models"},
         ),
+        "E11": ExperimentConfig(
+            name="E11",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=120,
+            horizon_hours=6,
+            models=("GRU",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E12": ExperimentConfig(
+            name="E12",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E13": ExperimentConfig(
+            name="E13",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("TCN",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
     }
 
 
