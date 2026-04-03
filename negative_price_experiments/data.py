@@ -86,11 +86,15 @@ class SequenceDataset:
         scaler: NumericScaler,
         *,
         include_country: bool,
+        tabular_values: np.ndarray | None = None,
     ) -> None:
         self.prepared = prepared
         self.samples = samples.reset_index(drop=True).copy()
         self.scaler = scaler
         self.include_country = include_country
+        if tabular_values is not None and len(tabular_values) != len(self.samples):
+            raise ValueError("tabular_values must align with samples.")
+        self.tabular_values = tabular_values.astype(np.float32, copy=False) if tabular_values is not None else None
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -110,7 +114,11 @@ class SequenceDataset:
             "x": x,
             "country_idx": np.int64(country_idx),
             "y": np.float32(row["y_true"]),
-        }
+        } | (
+            {"tabular_x": self.tabular_values[index]}
+            if self.tabular_values is not None
+            else {}
+        )
 
     @property
     def metadata(self) -> pd.DataFrame:
@@ -151,8 +159,15 @@ class PreparedExperimentData:
         scaler: NumericScaler,
         *,
         include_country: bool,
+        tabular_values: np.ndarray | None = None,
     ) -> SequenceDataset:
-        return SequenceDataset(self, samples, scaler, include_country=include_country)
+        return SequenceDataset(
+            self,
+            samples,
+            scaler,
+            include_country=include_country,
+            tabular_values=tabular_values,
+        )
 
     def build_tabular_bundle(self, samples: pd.DataFrame, *, include_country: bool) -> TabularBundle:
         feature_names, continuous_indices = self._tabular_feature_spec(include_country=include_country)
@@ -230,8 +245,9 @@ def prepare_experiment_data(config: ExperimentConfig) -> PreparedExperimentData:
     for feature in config.numeric_features:
         mask_col = f"{feature}{MASK_SUFFIX}"
         df[mask_col] = df[feature].isna().astype(np.float32)
-    df[list(config.numeric_features)] = (
-        df.groupby("country", sort=False)[list(config.numeric_features)].transform(lambda group: group.ffill(limit=config.ffill_limit))
+    ffill_features = tuple(dict.fromkeys(config.numeric_features + config.sample_filter_numeric_features))
+    df[list(ffill_features)] = df.groupby("country", sort=False)[list(ffill_features)].transform(
+        lambda group: group.ffill(limit=config.ffill_limit)
     )
 
     grouped = [(country, group.reset_index(drop=True)) for country, group in df.groupby("country", sort=False)]
@@ -282,7 +298,8 @@ def _build_country_panel_and_manifest(
         missing_masks=group[[f"{feature}{MASK_SUFFIX}" for feature in config.numeric_features]].to_numpy(dtype=np.float32),
         context_values=group[list(CALENDAR_CONTEXT_FEATURES)].to_numpy(dtype=np.float32),
     )
-    return panel, _build_sample_manifest_for_country(config, panel)
+    sample_filter_values = group[list(config.sample_filter_numeric_features)].to_numpy(dtype=np.float32)
+    return panel, _build_sample_manifest_for_country(config, panel, sample_filter_values)
 
 
 def _build_tabular_chunk(args) -> tuple[int, np.ndarray]:
@@ -337,14 +354,21 @@ def _build_tabular_row_values(
     return np.asarray(values, dtype=np.float32)
 
 
-def _build_sample_manifest_for_country(config: ExperimentConfig, panel: CountryPanel) -> pd.DataFrame:
-    row_has_missing = np.isnan(panel.numeric_values).any(axis=1).astype(np.int16)
-    rolling_missing = np.cumsum(row_has_missing)
-    counts = rolling_missing.copy()
+def _build_sample_manifest_for_country(
+    config: ExperimentConfig,
+    panel: CountryPanel,
+    sample_filter_values: np.ndarray,
+) -> pd.DataFrame:
     window = config.window_hours
-    if window < len(counts):
-        counts[window:] = rolling_missing[window:] - rolling_missing[:-window]
-    counts[: window - 1] = 1
+    if config.allow_window_missing:
+        counts = np.zeros(len(panel.times), dtype=np.int16)
+    else:
+        row_has_missing = np.isnan(sample_filter_values).any(axis=1).astype(np.int16)
+        rolling_missing = np.cumsum(row_has_missing)
+        counts = rolling_missing.copy()
+        if window < len(counts):
+            counts[window:] = rolling_missing[window:] - rolling_missing[:-window]
+        counts[: window - 1] = 1
 
     total_rows = len(panel.times)
     anchors = np.arange(window - 1, total_rows - config.horizon_hours, dtype=np.int32)

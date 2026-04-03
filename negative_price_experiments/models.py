@@ -365,12 +365,79 @@ if HAS_TORCH:
                 nn.Linear(64, 1),
             )
 
-        def forward(self, x: torch.Tensor, country_idx: torch.Tensor) -> torch.Tensor:
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> torch.Tensor:
             _, hidden = self.gru(x)
             features = hidden[-1]
             if self.use_country_embedding:
                 embedded = self.country_embedding(country_idx)
                 features = torch.cat([features, embedded], dim=1)
+            return self.classifier(features).squeeze(1)
+
+
+    class GRUHybridClassifier(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            tabular_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__()
+            if tabular_dim <= 0:
+                raise ValueError("GRUHybridClassifier requires tabular_dim > 0.")
+            self.use_country_embedding = use_country_embedding
+            self.gru = nn.GRU(
+                input_size=input_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+            )
+            if use_country_embedding:
+                self.country_embedding = nn.Embedding(num_countries, embedding_dim)
+                sequence_dim = hidden_size + embedding_dim
+            else:
+                self.country_embedding = None
+                sequence_dim = hidden_size
+            self.tabular_encoder = nn.Sequential(
+                nn.Linear(tabular_dim, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+            )
+            self.classifier = nn.Sequential(
+                nn.Linear(sequence_dim + 64, 64),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1),
+            )
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if tabular_x is None:
+                raise ValueError("GRUHybridClassifier requires tabular_x.")
+            _, hidden = self.gru(x)
+            sequence_features = hidden[-1]
+            if self.use_country_embedding:
+                embedded = self.country_embedding(country_idx)
+                sequence_features = torch.cat([sequence_features, embedded], dim=1)
+            tabular_features = self.tabular_encoder(tabular_x)
+            features = torch.cat([sequence_features, tabular_features], dim=1)
             return self.classifier(features).squeeze(1)
 
 
@@ -439,7 +506,12 @@ if HAS_TORCH:
                 nn.Linear(64, 1),
             )
 
-        def forward(self, x: torch.Tensor, country_idx: torch.Tensor) -> torch.Tensor:
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> torch.Tensor:
             features = self.network(x.transpose(1, 2)).mean(dim=2)
             if self.use_country_embedding:
                 embedded = self.country_embedding(country_idx)
@@ -506,7 +578,12 @@ if HAS_TORCH:
             patches = x.unfold(dimension=1, size=self.patch_len, step=self.stride)
             return patches.contiguous().view(batch_size, -1, self.patch_len * feature_dim)
 
-        def forward(self, x: torch.Tensor, country_idx: torch.Tensor) -> torch.Tensor:
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> torch.Tensor:
             patches = self._patchify(x)
             tokens = self.input_projection(patches)
             cls = self.cls_token.expand(tokens.shape[0], -1, -1)
@@ -526,11 +603,19 @@ def build_sequence_model(
     input_dim: int,
     use_country_embedding: bool,
     num_countries: int,
+    tabular_dim: int = 0,
 ) -> nn.Module:
     require_torch()
     if model_name == "GRU":
         return GRUClassifier(
             input_dim=input_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GRUHybrid":
+        return GRUHybridClassifier(
+            input_dim=input_dim,
+            tabular_dim=tabular_dim,
             use_country_embedding=use_country_embedding,
             num_countries=num_countries,
         )
@@ -556,12 +641,14 @@ def load_sequence_model(
     use_country_embedding: bool,
     num_countries: int,
     state_dict: dict[str, object],
+    tabular_dim: int = 0,
 ) -> nn.Module:
     model = build_sequence_model(
         model_name,
         input_dim=input_dim,
         use_country_embedding=use_country_embedding,
         num_countries=num_countries,
+        tabular_dim=tabular_dim,
     )
     model.load_state_dict(state_dict)
     return model
@@ -585,6 +672,13 @@ def _configure_torch_cpu_threads(device: "torch.device") -> None:
     torch.set_num_threads(get_cpu_worker_count(max_workers=8))
 
 
+def _forward_model(model: nn.Module, batch: dict[str, torch.Tensor], device: "torch.device") -> torch.Tensor:
+    tabular_x = batch.get("tabular_x")
+    if tabular_x is None:
+        return model(batch["x"].to(device), batch["country_idx"].to(device))
+    return model(batch["x"].to(device), batch["country_idx"].to(device), tabular_x.to(device))
+
+
 def _predict_with_model(model: nn.Module, dataset) -> np.ndarray:
     require_torch()
     loader = _build_loader(dataset, batch_size=256, shuffle=False)
@@ -595,7 +689,7 @@ def _predict_with_model(model: nn.Module, dataset) -> np.ndarray:
     probs: list[np.ndarray] = []
     with torch.no_grad():
         for batch in loader:
-            logits = model(batch["x"].to(device), batch["country_idx"].to(device))
+            logits = _forward_model(model, batch, device)
             probs.append(torch.sigmoid(logits).cpu().numpy())
     if not probs:
         return np.empty(0, dtype=np.float32)
@@ -627,6 +721,7 @@ def train_sequence_model(
         input_dim=train_dataset[0]["x"].shape[1],
         use_country_embedding=use_country_embedding,
         num_countries=num_countries,
+        tabular_dim=int(train_dataset[0]["tabular_x"].shape[0]) if "tabular_x" in train_dataset[0] else 0,
     )
     if init_state_dict is not None:
         model.load_state_dict(init_state_dict)
@@ -669,7 +764,7 @@ def train_sequence_model(
         epoch_sample_count = 0
         for batch in train_loader:
             optimizer.zero_grad()
-            logits = model(batch["x"].to(device), batch["country_idx"].to(device))
+            logits = _forward_model(model, batch, device)
             loss = loss_fn(logits, batch["y"].to(device))
             loss.backward()
             optimizer.step()
@@ -748,6 +843,7 @@ def fit_sequence_final(
         input_dim=train_dataset[0]["x"].shape[1],
         use_country_embedding=use_country_embedding,
         num_countries=num_countries,
+        tabular_dim=int(train_dataset[0]["tabular_x"].shape[0]) if "tabular_x" in train_dataset[0] else 0,
     )
     if init_state_dict is not None:
         model.load_state_dict(init_state_dict)
@@ -785,7 +881,7 @@ def fit_sequence_final(
         epoch_sample_count = 0
         for batch in train_loader:
             optimizer.zero_grad()
-            logits = model(batch["x"].to(device), batch["country_idx"].to(device))
+            logits = _forward_model(model, batch, device)
             loss = loss_fn(logits, batch["y"].to(device))
             loss.backward()
             optimizer.step()

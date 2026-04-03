@@ -52,13 +52,22 @@ Extended experiment IDs:
 - `E15B`: 15-market renewables-feature `GRU` experiment, `window=168`, `h=6`
 - `E16A`: 7-market public-feature `GRU` experiment, `window=168`, `h=6`
 - `E16B`: 7-market cross-border-flow `GRU` experiment, `window=168`, `h=6`
+- `E17A`: 15-market public-feature `GRU` experiment on the renewables-shared valid-sample subset, `window=168`, `h=6`
+- `E17B`: 15-market renewables-feature `GRU` experiment on the same renewables-shared valid-sample subset, `window=168`, `h=6`
+- `E18`: repeated-seed version of `E17B` with aggregated metrics across multiple random seeds
+- `E19`: 15-market renewables-feature `GRUHybrid` experiment that fuses sequence representations with handcrafted tabular features
+- `E20`: 20-market renewables-feature `GRU` experiment with missingness-aware window retention, `window=168`, `h=6`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, and `E16B` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, and `E20` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
+- `E17A/E17B` form the stricter renewables-track comparison on a shared valid-sample subset
+- `E18` wraps repeated random seeds internally and writes both raw and aggregated metrics
+- `E19` is the first implemented hybrid deep-learning experiment in this repository
+- `E20` keeps sequence windows with missing renewable inputs and relies on missingness masks instead of dropping those samples
 
 All default experiment definitions are created in:
 
@@ -94,11 +103,15 @@ python3 run_negative_price_experiments.py \
   --experiments E7,E8,E9,E10
 ```
 
-Planned next deep-learning phase:
+Current next deep-learning phase:
 
 - first run `E11-E13` to select the strongest deep sequence model and history window
 - run `E14` as the imbalance-aware continuation of the selected `GRU + 168h` backbone
 - then compare richer-feature paired experiments `E15A/E15B` and `E16A/E16B`
+- then run `E17A/E17B` for the cleaner shared-valid-sample renewables comparison
+- use `E18` to measure seed stability once the `E17B` direction is accepted
+- use `E19` to test hybrid fusion of sequence and handcrafted features
+- use `E20` to bring renewables back to the full 20-country setup with missingness-aware handling
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -143,6 +156,8 @@ Sample construction rules in `negative_price_experiments/data.py`:
 - For selected numeric inputs, create missing indicators first
 - Then apply country-local `ffill(limit=3)`
 - If any selected input feature is still missing inside the input window after forward fill, drop the sample
+- `E17A/E17B` can override which feature group defines valid windows through a shared sample-filter feature group
+- `E20` can preserve windows with missing renewable inputs and expose that missingness through mask channels instead of dropping the sample
 
 Important:
 
@@ -185,13 +200,13 @@ Country handling:
 
 - `E1-E5,E7-E9` tabular models use country one-hot
 - `E1-E5,E10` sequence models use country embedding
-- `E11-E14,E15A,E15B,E16A,E16B` sequence experiments also use country embedding
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20` sequence experiments also use country embedding
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
 Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
-`E11-E14,E15A,E15B,E16A,E16B` follow the same target-time-based fold protocol.
+`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20` follow the same target-time-based fold protocol.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -217,6 +232,7 @@ Implemented tabular models:
 Implemented sequence models:
 
 - `GRU`
+- `GRUHybrid`
 - `TCN`
 - `PatchTST`
 
@@ -232,7 +248,7 @@ Sequence model implementation notes:
 - Validation model selection uses best checkpoint by validation PR-AUC
 - Final full-train models are retrained from scratch using the selected epoch count
 - the current default sequence setup uses a `72` hour historical window in implemented configs
-- `E11-E14,E15A,E15B,E16A,E16B` explicitly test longer windows so the model can observe more historical hours before `t+h`
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20` explicitly test longer windows so the model can observe more historical hours before `t+h`
 
 Robustness behavior:
 
@@ -322,8 +338,9 @@ For the current roadmap:
 
 - implement `E11-E13` first
 - review their validation and test behavior
-- use `E15A/E15B` and `E16A/E16B` as paired richer-feature follow-ups
-- only then lock the exact design of `E14` and any later hybrid extension
+- use `E15A/E15B` and `E16A/E16B` as the first richer-feature follow-ups
+- use `E17A/E17B` when a stricter shared-valid-sample renewables comparison is required
+- use `E18` for seed stability and `E19` for hybrid follow-up only after the renewables direction is accepted
 
 ## Practical note on file placement
 

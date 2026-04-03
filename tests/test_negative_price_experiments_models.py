@@ -40,6 +40,16 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
         )
         self.assertEqual(model.__class__.__name__, "PatchTSTClassifier")
 
+    def test_builds_gru_hybrid_sequence_model(self) -> None:
+        model = build_sequence_model(
+            "GRUHybrid",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        self.assertEqual(model.__class__.__name__, "GRUHybridClassifier")
+
 
 @unittest.skipUnless(HAS_TORCH, "torch is required for focal loss tests")
 class NegativePriceModelLossTest(unittest.TestCase):

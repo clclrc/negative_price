@@ -18,6 +18,53 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Deep learning still underperforms the strongest tree-model baselines
 - The most defensible next step is to continue from `E12` rather than switching backbone again
 
+## Observed signals from completed experiments
+
+### Signal group 1: tree-model benchmark results (`E7-E10` comparison context)
+- `E8` (`CatBoost`) is the strongest current overall benchmark in the main `20-market + public + h=6` setting
+- `E7` (`LightGBM`) is competitive but not better than `E8`
+- `E9` (weighted and calibrated `XGBoost`) did not improve on the stronger existing tree baselines
+- `E10` (`PatchTST`) underperformed clearly and is not the preferred deep-learning direction right now
+
+#### Direction implication
+- The project should keep a strong tree-model benchmark, especially `E8`, as the main score reference
+- `PatchTST` should not be the priority deep-learning backbone for the next round
+
+### Signal group 2: longer-window deep-learning results (`E11-E13`)
+- `E11`: `GRU`, `window=120`, improved over the earlier `GRU` baseline in some aspects but showed a large validation-to-test drop
+- `E12`: `GRU`, `window=168`, is the best current deep-learning configuration under the main setting
+- `E13`: `TCN`, `window=168`, did not beat the `E12` `GRU`
+
+#### Direction implication
+- A longer history window is useful for the current `GRU` line
+- `GRU + 168h` should remain the main deep-learning backbone until new evidence overturns it
+- `TCN` is currently secondary rather than the lead candidate
+
+### Signal group 3: what the current gap means
+- The best current deep-learning result still remains materially below the strongest tree baseline
+- This means the next round should focus on improving the current deep-learning line rather than changing backbone again
+- The most justified next levers are:
+  imbalance-aware training,
+  richer feature groups on matched country subsets,
+  and only later hybrid modeling
+
+### Signal group 4: imbalance-aware and richer-feature follow-up results (`E14-E16`)
+- `E14` (`GRU + 168h + focal loss`) did not improve over `E12` on test `PR-AUC`
+- `E14` slightly improved `F1` and clearly improved `recall` and `balanced_accuracy`
+- This suggests focal loss makes the current deep-learning model more aggressive at catching events, but does not improve ranking quality under the main metric
+- `E15B` (`15-country`, `renewables`) outperformed `E15A` (`15-country`, `public`) on test `PR-AUC`, `F1`, `recall`, and `balanced_accuracy`
+- This is the clearest positive signal so far that richer renewable features can help the selected deep-learning backbone
+- `E16B` (`7-country`, `flows`) underperformed `E16A` (`7-country`, `public`) on test `PR-AUC`, `precision`, and `F1`
+- This means the current flow-feature implementation is not yet a stronger direction than the matched public-feature baseline
+- `E16A` achieved the strongest absolute test score in this round, but it is a `7-country` subset result and should not be treated as directly comparable to the `20-country` main setup
+
+#### Direction implication
+- Keep `E12` as the main deep-learning reference for score comparison under the full `20-country` setup
+- Treat `E14` as a recall-oriented variant, not a new mainline winner
+- Increase confidence in the renewables track
+- Decrease priority of the current flow track until there is a cleaner or stronger feature formulation
+- Continue to defer hybrid modeling until the richer-feature direction is better understood
+
 ## Direction assessment
 
 ### Direction A: `E14 = E12 + focal loss`
@@ -39,7 +86,18 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - High priority
 - Run this before richer-feature experiments because it is the cleanest continuation of the `E12` line
 - Status:
-  implemented as a config-backed experiment definition and ready to run
+  implemented and completed
+
+#### Observed outcome
+- Test `PR-AUC` decreased from `0.2918` (`E12`) to `0.2844`
+- Test `F1` changed only marginally, from `0.3273` to `0.3285`
+- Test `recall` increased from `0.5911` to `0.7076`
+- Test `balanced_accuracy` increased from `0.7767` to `0.8295`
+
+#### Updated judgment
+- Focal loss is useful if higher event recall is the priority
+- Focal loss is not currently the best choice if `PR-AUC` remains the primary selection metric
+- `E14` should be treated as a recall-oriented branch rather than replacing `E12` as the main deep-learning baseline
 
 ## Direction B: `E15A/E15B` renewables track
 
@@ -64,6 +122,18 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Use only the countries with sufficiently complete renewable coverage
 - Always compare `E15B` against `E15A`, not directly against `E12`
 
+#### Observed outcome
+- `E15B` improved test `PR-AUC` from `0.2219` to `0.2665`
+- `E15B` improved test `F1` from `0.2990` to `0.3186`
+- `E15B` improved test `recall` from `0.4739` to `0.6394`
+- The renewables track therefore produced a positive direction signal for the selected `GRU + 168h` backbone
+- However, `E15B` used fewer valid samples than `E15A` because of feature availability, so this is not yet a perfectly sample-matched comparison
+
+#### Updated judgment
+- Renewables are the strongest current richer-feature direction for deep learning in this project
+- This track should be prioritized ahead of further flow-feature expansion
+- A future cleaner comparison on a shared valid-sample subset would strengthen the conclusion
+
 ## Direction C: `E16A/E16B` flow track
 
 ### `E16A`: `7-country`, `public`, `GRU`, `window=168`, `h=6`
@@ -86,6 +156,18 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - High priority after `E14`
 - Use only the countries with sufficiently complete flow coverage
 - Compare `E16B` primarily against `E16A`, then secondarily against historical flow baselines
+
+#### Observed outcome
+- `E16B` reduced test `PR-AUC` from `0.5192` to `0.3848`
+- `E16B` reduced test `F1` from `0.5489` to `0.4568`
+- `E16B` increased `recall` slightly, but at a meaningful cost in ranking quality and precision
+- `E16A` is the strongest absolute result in this round, but that strength belongs to the `7-country public-feature` subset baseline rather than to the added flow features
+- `E16B` also used fewer valid samples than `E16A`, so missingness likely contributes to the instability of the comparison
+
+#### Updated judgment
+- The current flow-feature formulation should not be treated as a successful extension
+- Flow features are lower priority than renewables for the next round
+- If revisited, this direction should first improve missing-data handling or enforce a shared valid-sample comparison
 
 ## Direction D: Hybrid sequence encoder + handcrafted features
 
@@ -112,12 +194,25 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 
 ## Recommended order
 
-1. `E14`
-2. `E15A`
-3. `E15B`
-4. `E16A`
-5. `E16B`
-6. Reassess whether a hybrid experiment should be introduced next
+1. Keep `E12` as the main full-setup deep-learning reference
+2. Use `E14` only when a higher-recall operating point is desired
+3. Prioritize the renewables track over the flow track
+4. Build a cleaner matched-sample comparison for `public` versus `renewables`
+5. Reassess whether a hybrid experiment should be introduced after the renewables follow-up
+
+## Implemented next-step experiment definitions
+
+- `E17A`: `15-country`, `public`, `GRU`, `window=168`, `h=6`, but filtered to the renewables-shared valid sample subset
+- `E17B`: `15-country`, `renewables`, `GRU`, `window=168`, `h=6`, using the same renewables-shared valid sample subset
+- `E18`: repeated-seed version of `E17B`, currently configured with three random seeds and root-level aggregated metrics
+- `E19`: `15-country`, `renewables`, `GRUHybrid`, `window=168`, `h=6`, combining sequence representations with handcrafted tabular features
+- `E20`: `20-country`, `renewables`, `GRU`, `window=168`, `h=6`, with missingness-aware window retention instead of dropping windows that still contain missing renewable inputs
+
+### Why these are the next coded experiments
+- `E17A/E17B` make the renewables comparison cleaner than `E15A/E15B`
+- `E18` checks whether the renewables gain is stable across random seeds
+- `E19` becomes meaningful only after the renewables direction has shown positive evidence
+- `E20` attempts to bring the renewables direction back to the full main-country setting without collapsing the sample count
 
 ## Decision rules for the next update
 
@@ -125,13 +220,26 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Keep `GRU + 168h` as the main deep-learning backbone
 - Carry the improved training strategy into richer-feature experiments where appropriate
 
+### Actual outcome from `E14`
+- `E14` did not improve the main selection metric `PR-AUC`
+- Keep `E12` as the main score benchmark
+- Retain `E14` only as a recall-oriented variant
+
 ### If `E15B > E15A`
 - Conclude that the deep-learning line benefits from renewable features
 - Increase confidence in richer-feature sequence experiments
 
+### Actual outcome from `E15A/E15B`
+- This condition was satisfied on the current run
+- Renewable features are now the most credible next richer-feature direction
+
 ### If `E16B > E16A`
 - Conclude that the deep-learning line benefits from system-state flow features
 - Increase confidence in mechanism-driven feature expansion
+
+### Actual outcome from `E16A/E16B`
+- This condition was not satisfied on the current run
+- Do not prioritize further flow-feature expansion before fixing the comparison quality
 
 ### If richer-feature experiments improve substantially
 - Hybrid becomes more justified as a score-maximization and complementarity test

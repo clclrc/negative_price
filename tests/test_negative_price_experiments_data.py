@@ -141,3 +141,84 @@ class NegativePriceDataPrepTest(unittest.TestCase):
 
         np.testing.assert_allclose(serial_bundle.X, parallel_bundle.X)
         np.testing.assert_array_equal(serial_bundle.y, parallel_bundle.y)
+
+    def test_sample_filter_feature_group_aligns_public_and_renewables_sample_pool(self) -> None:
+        df = build_toy_frame(periods=14)
+        df.loc[4:7, ["Wind Onshore", "Solar"]] = pd.NA
+        path = self.write_frame(df)
+        public_config = ExperimentConfig(
+            name="PUBLIC_STRICT",
+            data_path=path,
+            countries=("AT",),
+            feature_group="public",
+            window_hours=4,
+            horizon_hours=1,
+            models=("GRU",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+            sample_filter_feature_group="renewables",
+        )
+        renewables_config = ExperimentConfig(
+            name="RENEWABLES_STRICT",
+            data_path=path,
+            countries=("AT",),
+            feature_group="renewables",
+            window_hours=4,
+            horizon_hours=1,
+            models=("GRU",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+            sample_filter_feature_group="renewables",
+        )
+        public_prepared = prepare_experiment_data(public_config)
+        renewables_prepared = prepare_experiment_data(renewables_config)
+
+        pd.testing.assert_frame_equal(
+            public_prepared.sample_manifest.reset_index(drop=True),
+            renewables_prepared.sample_manifest.reset_index(drop=True),
+        )
+
+    def test_allow_window_missing_keeps_windows_that_strict_filter_drops(self) -> None:
+        df = build_toy_frame(periods=14)
+        df.loc[4:7, ["Wind Onshore", "Solar"]] = pd.NA
+        path = self.write_frame(df)
+        strict_config = ExperimentConfig(
+            name="STRICT",
+            data_path=path,
+            countries=("AT",),
+            feature_group="renewables",
+            window_hours=4,
+            horizon_hours=1,
+            models=("GRU",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+        )
+        missing_aware_config = ExperimentConfig(
+            name="MISSING_AWARE",
+            data_path=path,
+            countries=("AT",),
+            feature_group="renewables",
+            window_hours=4,
+            horizon_hours=1,
+            models=("GRU",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+            allow_window_missing=True,
+        )
+
+        strict_prepared = prepare_experiment_data(strict_config)
+        missing_aware_prepared = prepare_experiment_data(missing_aware_config)
+
+        self.assertLess(len(strict_prepared.sample_manifest), len(missing_aware_prepared.sample_manifest))
+        strict_targets = set(pd.to_datetime(strict_prepared.sample_manifest["target_time"], utc=True))
+        missing_aware_targets = set(pd.to_datetime(missing_aware_prepared.sample_manifest["target_time"], utc=True))
+        self.assertIn(utc_ts("2024-01-01 08:00:00"), missing_aware_targets)
+        self.assertNotIn(utc_ts("2024-01-01 08:00:00"), strict_targets)

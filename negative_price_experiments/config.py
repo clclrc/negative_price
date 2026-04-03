@@ -98,7 +98,7 @@ CORE_TABULAR_MODELS = ("Majority", "LogisticRegression", "XGBoost")
 ADVANCED_TABULAR_MODELS = ("LightGBM", "CatBoost", "XGBoostWeightedCalibrated")
 TABULAR_MODELS = CORE_TABULAR_MODELS + ADVANCED_TABULAR_MODELS
 CORE_SEQUENCE_MODELS = ("GRU", "TCN")
-ADVANCED_SEQUENCE_MODELS = ("PatchTST",)
+ADVANCED_SEQUENCE_MODELS = ("PatchTST", "GRUHybrid")
 SEQUENCE_MODELS = CORE_SEQUENCE_MODELS + ADVANCED_SEQUENCE_MODELS
 DEFAULT_MODELS = CORE_TABULAR_MODELS + CORE_SEQUENCE_MODELS
 
@@ -153,6 +153,9 @@ class ExperimentConfig:
     sequence_patience: int = 5
     sequence_loss: str = "bce"
     focal_gamma: float = 2.0
+    sample_filter_feature_group: str | None = None
+    allow_window_missing: bool = False
+    repeat_random_seeds: tuple[int, ...] = ()
 
     @property
     def numeric_features(self) -> tuple[str, ...]:
@@ -163,6 +166,17 @@ class ExperimentConfig:
         if self.feature_group == "flows":
             return PUBLIC_NUMERIC_FEATURES + FLOW_FEATURES
         raise ValueError(f"Unsupported feature_group: {self.feature_group}")
+
+    @property
+    def sample_filter_numeric_features(self) -> tuple[str, ...]:
+        feature_group = self.sample_filter_feature_group or self.feature_group
+        if feature_group == "public":
+            return PUBLIC_NUMERIC_FEATURES
+        if feature_group == "renewables":
+            return PUBLIC_NUMERIC_FEATURES + RENEWABLE_FEATURES
+        if feature_group == "flows":
+            return PUBLIC_NUMERIC_FEATURES + FLOW_FEATURES
+        raise ValueError(f"Unsupported sample_filter_feature_group: {feature_group}")
 
 
 @dataclass(frozen=True)
@@ -388,6 +402,58 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             window_hours=168,
             horizon_hours=6,
             models=("GRU",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E17A": ExperimentConfig(
+            name="E17A",
+            countries=RENEWABLE_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            sample_filter_feature_group="renewables",
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E17B": ExperimentConfig(
+            name="E17B",
+            countries=RENEWABLE_COUNTRIES,
+            feature_group="renewables",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            sample_filter_feature_group="renewables",
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E18": ExperimentConfig(
+            name="E18",
+            countries=RENEWABLE_COUNTRIES,
+            feature_group="renewables",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            random_seed=42,
+            sample_filter_feature_group="renewables",
+            repeat_random_seeds=(42, 52, 62),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours", "random_seed"}},
+        ),
+        "E19": ExperimentConfig(
+            name="E19",
+            countries=RENEWABLE_COUNTRIES,
+            feature_group="renewables",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybrid",),
+            sample_filter_feature_group="renewables",
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E20": ExperimentConfig(
+            name="E20",
+            countries=MAIN_COUNTRIES,
+            feature_group="renewables",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRU",),
+            allow_window_missing=True,
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
         ),
     }

@@ -69,3 +69,28 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E15B"].countries, configs["E3"].countries)
         self.assertEqual(configs["E16A"].countries, configs["E5"].countries)
         self.assertEqual(configs["E16B"].countries, configs["E5"].countries)
+
+    def test_default_configs_include_next_iteration_experiments(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E17A", "E17B", "E18", "E19", "E20"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E17A"].models, ("GRU",))
+        self.assertEqual(configs["E17B"].models, ("GRU",))
+        self.assertEqual(configs["E18"].models, ("GRU",))
+        self.assertEqual(configs["E19"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E20"].models, ("GRU",))
+
+        self.assertEqual(configs["E17A"].sample_filter_feature_group, "renewables")
+        self.assertEqual(configs["E17B"].sample_filter_feature_group, "renewables")
+        self.assertEqual(configs["E18"].sample_filter_feature_group, "renewables")
+        self.assertEqual(configs["E19"].sample_filter_feature_group, "renewables")
+        self.assertEqual(configs["E20"].sample_filter_feature_group, None)
+
+        self.assertEqual(configs["E18"].repeat_random_seeds, (42, 52, 62))
+        self.assertTrue(configs["E20"].allow_window_missing)
+        self.assertFalse(configs["E17A"].allow_window_missing)
+        self.assertEqual(configs["E17A"].countries, configs["E15A"].countries)
+        self.assertEqual(configs["E17B"].countries, configs["E15B"].countries)
+        self.assertEqual(configs["E20"].countries, configs["E12"].countries)

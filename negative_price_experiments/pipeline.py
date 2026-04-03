@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -79,6 +80,16 @@ def run_experiment(
     reporter: ProgressReporter | None = None,
 ) -> dict[str, Path]:
     output_path = Path(output_dir).resolve() / config.name
+    if config.repeat_random_seeds:
+        return _run_repeated_seed_experiment(
+            config,
+            output_path=output_path,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
     output_path.mkdir(parents=True, exist_ok=True)
     progress_log = output_path / "progress.log"
     reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
@@ -217,6 +228,115 @@ def run_experiment(
         ),
     )
 
+    return {
+        "sample_manifest": output_path / "sample_manifest.csv",
+        "metrics_summary": output_path / "metrics_summary.csv",
+        "predictions": output_path / "predictions.csv",
+        "progress_log": progress_log,
+    }
+
+
+def _run_repeated_seed_experiment(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter | None,
+) -> dict[str, Path]:
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    seeds = tuple(config.repeat_random_seeds)
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (config.name,),
+        (
+            f"repeated-seed experiment started | seeds={seeds} "
+            f"| data={config.data_path} | output={output_path}"
+        ),
+    )
+
+    seed_artifacts: list[tuple[int, dict[str, Path]]] = []
+    seed_loop_started_at = reporter.now()
+    for seed_index, seed in enumerate(seeds, start=1):
+        seed_started_at = reporter.now()
+        seed_config = replace(
+            config,
+            name=f"{config.name}_SEED_{seed}",
+            random_seed=seed,
+            repeat_random_seeds=(),
+        )
+        reporter.log(
+            (config.name, f"seed={seed}"),
+            f"seed {seed_index}/{len(seeds)} started",
+        )
+        artifacts = run_experiment(
+            seed_config,
+            output_dir=output_path / "seed_runs",
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+        seed_artifacts.append((seed, artifacts))
+        reporter.log_step(
+            (config.name, f"seed={seed}"),
+            label="seed",
+            index=seed_index,
+            total=len(seeds),
+            loop_started_at=seed_loop_started_at,
+            step_started_at=seed_started_at,
+            extra="completed",
+        )
+
+    sample_manifest = pd.read_csv(seed_artifacts[0][1]["sample_manifest"])
+    sample_manifest.to_csv(output_path / "sample_manifest.csv", index=False)
+
+    metrics_frames: list[pd.DataFrame] = []
+    prediction_frames: list[pd.DataFrame] = []
+    for seed, artifacts in seed_artifacts:
+        metrics_frame = pd.read_csv(artifacts["metrics_summary"])
+        metrics_frame["experiment"] = config.name
+        metrics_frame["seed"] = seed
+        metrics_frame["seed_aggregation"] = "raw"
+        metrics_frames.append(metrics_frame)
+
+        prediction_frame = pd.read_csv(artifacts["predictions"])
+        prediction_frame["experiment"] = config.name
+        prediction_frame["seed"] = seed
+        prediction_frames.append(prediction_frame)
+
+    metrics_summary = pd.concat(metrics_frames, ignore_index=True)
+    aggregate_rows = _aggregate_seed_metrics(metrics_summary)
+    if not aggregate_rows.empty:
+        metrics_summary = pd.concat([metrics_summary, aggregate_rows], ignore_index=True, sort=False)
+    metrics_summary.to_csv(output_path / "metrics_summary.csv", index=False)
+
+    predictions = pd.concat(prediction_frames, ignore_index=True)
+    predictions.to_csv(output_path / "predictions.csv", index=False)
+
+    if not predictions.empty:
+        summarize_prediction_frame(
+            predictions,
+            group_cols=["experiment", "model", "split", "seed", "country"],
+            min_positive=20,
+        ).to_csv(output_path / "country_metrics.csv", index=False)
+        summarize_prediction_frame(
+            add_month_column(predictions),
+            group_cols=["experiment", "model", "split", "seed", "month"],
+        ).to_csv(output_path / "monthly_metrics.csv", index=False)
+
+    reporter.log(
+        (config.name,),
+        (
+            f"repeated-seed experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
+            f"| artifacts={output_path}"
+        ),
+    )
     return {
         "sample_manifest": output_path / "sample_manifest.csv",
         "metrics_summary": output_path / "metrics_summary.csv",
@@ -625,9 +745,47 @@ def _evaluate_model_across_folds(
         return _evaluate_catboost(prepared, config, folds, reporter=reporter)
     if model_name == "XGBoostWeightedCalibrated":
         return _evaluate_xgboost_weighted_calibrated(prepared, config, folds, reporter=reporter)
-    if model_name in ("GRU", "TCN", "PatchTST"):
+    if model_name in ("GRU", "TCN", "PatchTST", "GRUHybrid"):
         return _evaluate_sequence_model(prepared, config, model_name, folds, reporter=reporter)
     raise ValueError(f"Unsupported model: {model_name}")
+
+
+def _build_sequence_train_eval_datasets(
+    prepared,
+    config: ExperimentConfig,
+    model_name: str,
+    train_samples: pd.DataFrame,
+    eval_samples: pd.DataFrame,
+):
+    scaler = prepared.fit_sequence_scaler(train_samples)
+    if model_name != "GRUHybrid":
+        train_ds = prepared.build_sequence_dataset(train_samples, scaler, include_country=config.use_country_features)
+        eval_ds = prepared.build_sequence_dataset(eval_samples, scaler, include_country=config.use_country_features)
+        return scaler, train_ds, eval_ds
+
+    train_bundle = prepared.build_tabular_bundle(train_samples, include_country=config.use_country_features)
+    eval_bundle = prepared.build_tabular_bundle(eval_samples, include_country=config.use_country_features)
+    tabular_scaler = TabularScaler(train_bundle.continuous_indices).fit(train_bundle.X)
+    train_ds = prepared.build_sequence_dataset(
+        train_samples,
+        scaler,
+        include_country=config.use_country_features,
+        tabular_values=tabular_scaler.transform(train_bundle.X),
+    )
+    eval_ds = prepared.build_sequence_dataset(
+        eval_samples,
+        scaler,
+        include_country=config.use_country_features,
+        tabular_values=tabular_scaler.transform(eval_bundle.X),
+    )
+    return scaler, train_ds, eval_ds
+
+
+def _sequence_tabular_dim(dataset) -> int:
+    sample = dataset[0]
+    if "tabular_x" not in sample:
+        return 0
+    return int(sample["tabular_x"].shape[0])
 
 
 def _evaluate_majority(prepared, config: ExperimentConfig, folds, *, reporter: ProgressReporter) -> tuple[dict[str, object], list[dict[str, object]], list[pd.DataFrame]]:
@@ -1274,9 +1432,13 @@ def _evaluate_sequence_model(
             (config.name, model_name, fold.name),
             f"fold {fold_index}/{len(folds)} started | train_samples={len(train)} | val_samples={len(val)}",
         )
-        scaler = prepared.fit_sequence_scaler(train)
-        train_ds = prepared.build_sequence_dataset(train, scaler, include_country=config.use_country_features)
-        val_ds = prepared.build_sequence_dataset(val, scaler, include_country=config.use_country_features)
+        _, train_ds, val_ds = _build_sequence_train_eval_datasets(
+            prepared,
+            config,
+            model_name,
+            train,
+            val,
+        )
         learning_rate = config.sequence_learning_rate
         single_class_probability = _single_class_probability(train_ds.metadata["y_true"].to_numpy(dtype=int))
         if single_class_probability is not None:
@@ -1308,6 +1470,7 @@ def _evaluate_sequence_model(
                 use_country_embedding=config.use_country_features,
                 num_countries=len(config.countries),
                 state_dict=outcome.state_dict,
+                tabular_dim=_sequence_tabular_dim(train_ds),
             )
             y_prob = predict_sequence_model(fitted, val_ds)
             best_epoch = outcome.best_epoch
@@ -1514,9 +1677,13 @@ def _fit_and_score_final_model(
         )
         return frame, _metrics_row(frame, experiment=config.name, model=model_name, split="test", candidate=chosen["candidate"])
 
-    scaler = prepared.fit_sequence_scaler(train_samples)
-    train_ds = prepared.build_sequence_dataset(train_samples, scaler, include_country=config.use_country_features)
-    test_ds = prepared.build_sequence_dataset(test_samples, scaler, include_country=config.use_country_features)
+    _, train_ds, test_ds = _build_sequence_train_eval_datasets(
+        prepared,
+        config,
+        model_name,
+        train_samples,
+        test_samples,
+    )
     single_class_probability = _single_class_probability(train_ds.metadata["y_true"].to_numpy(dtype=int))
     if single_class_probability is not None:
         y_prob = predict_majority(single_class_probability, len(test_ds))
@@ -1572,6 +1739,35 @@ def _single_class_probability(y: np.ndarray) -> float | None:
     if unique.size < 2:
         return float(unique[0])
     return None
+
+
+def _aggregate_seed_metrics(metrics: pd.DataFrame) -> pd.DataFrame:
+    if metrics.empty or "seed" not in metrics.columns:
+        return pd.DataFrame()
+    if "seed_aggregation" in metrics.columns:
+        raw = metrics.loc[metrics["seed_aggregation"] == "raw"].copy()
+    else:
+        raw = metrics.copy()
+    if raw.empty:
+        return pd.DataFrame()
+
+    numeric_cols = [
+        column
+        for column in raw.columns
+        if column not in {"seed", "seed_aggregation"} and pd.api.types.is_numeric_dtype(raw[column])
+    ]
+    if not numeric_cols:
+        return pd.DataFrame()
+    group_cols = [column for column in raw.columns if column not in set(numeric_cols).union({"seed", "seed_aggregation"})]
+
+    mean_rows = raw.groupby(group_cols, dropna=False)[numeric_cols].mean().reset_index()
+    mean_rows["seed"] = pd.NA
+    mean_rows["seed_aggregation"] = "mean"
+
+    std_rows = raw.groupby(group_cols, dropna=False)[numeric_cols].std(ddof=0).reset_index()
+    std_rows["seed"] = pd.NA
+    std_rows["seed_aggregation"] = "std"
+    return pd.concat([mean_rows, std_rows], ignore_index=True, sort=False)
 
 
 def _prediction_frame(

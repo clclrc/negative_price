@@ -142,3 +142,79 @@ The decision rule for continuation is:
 * `E14-E16` extend that selected model rather than introducing unnecessary architectural changes at the same time.
 
 This staged design keeps the experiment story coherent: first identify whether longer historical context helps deep learning, then improve imbalance handling, and finally test whether the selected deep encoder gains more from richer system-condition feature groups.
+
+## **Phase 3: Cleaner renewables validation and scale-up**
+
+Based on the completed `E14-E16` results, the next deep-learning phase should focus on the renewables direction rather than expanding the flow track immediately.
+
+7. `E17A`: `15-country`, `public`, `GRU`, `window = 168`, `h = 6`, but filtered to the renewables-shared valid-sample subset.  
+   Goal: build a stricter public baseline on exactly the same valid sample pool used for the renewables comparison.
+8. `E17B`: `15-country`, `renewables`, `GRU`, `window = 168`, `h = 6`, using the same renewables-shared valid-sample subset.  
+   Goal: test whether renewable features still improve the deep-learning line under a cleaner matched-sample comparison.
+9. `E18`: repeated-seed version of `E17B`.  
+   Goal: assess whether the observed gain from the renewables direction is stable across random seeds rather than a single-run fluctuation.
+10. `E19`: `15-country`, `renewables`, `GRUHybrid`, `window = 168`, `h = 6`.  
+    Goal: test whether a hybrid model combining learned sequence representations and handcrafted tabular summaries can improve over pure sequence modeling.
+11. `E20`: `20-country`, `renewables`, `GRU`, `window = 168`, `h = 6`, with missingness-aware window retention.  
+    Goal: bring the renewables-enhanced deep-learning line back to the full main-country setting without dropping a large fraction of samples because of incomplete renewable coverage.
+
+# **Experiment Record**
+
+## **Completed deep-learning follow-up experiments**
+
+The `E11-E16` sequence experiments have now been run under the leakage-free future event prediction setup.
+
+### **Stage 1: Longer-window backbone selection (`E11-E13`)**
+
+- `E11`: `GRU`, `window = 120`, `20-market`, `public`, `h = 6`
+- `E12`: `GRU`, `window = 168`, `20-market`, `public`, `h = 6`
+- `E13`: `TCN`, `window = 168`, `20-market`, `public`, `h = 6`
+
+The key finding from this stage is that `GRU + 168h` (`E12`) became the strongest deep-learning configuration under the main `20-market + public + h = 6` setting. This supports the view that a longer history window is useful for the current forecasting task, and it establishes `E12` as the deep-learning reference line for later follow-up experiments.
+
+### **Stage 2: Imbalance-aware and richer-feature follow-up (`E14-E16`)**
+
+- `E14`: `20-country`, `public`, `GRU`, `window = 168`, `h = 6`, `focal loss`
+- `E15A`: `15-country`, `public`, `GRU`, `window = 168`, `h = 6`
+- `E15B`: `15-country`, `renewables`, `GRU`, `window = 168`, `h = 6`
+- `E16A`: `7-country`, `public`, `GRU`, `window = 168`, `h = 6`
+- `E16B`: `7-country`, `flows`, `GRU`, `window = 168`, `h = 6`
+
+The main test-set results are:
+
+| Experiment | Setting | PR-AUC | F1 | Recall | Balanced Accuracy |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `E12` | `20-country`, `public`, `GRU`, `168h` | `0.2918` | `0.3273` | `0.5911` | `0.7767` |
+| `E14` | `20-country`, `public`, `GRU`, `168h`, `focal loss` | `0.2844` | `0.3285` | `0.7076` | `0.8295` |
+| `E15A` | `15-country`, `public`, `GRU`, `168h` | `0.2219` | `0.2990` | `0.4739` | `0.7204` |
+| `E15B` | `15-country`, `renewables`, `GRU`, `168h` | `0.2665` | `0.3186` | `0.6394` | `0.7963` |
+| `E16A` | `7-country`, `public`, `GRU`, `168h` | `0.5192` | `0.5489` | `0.6083` | `0.7981` |
+| `E16B` | `7-country`, `flows`, `GRU`, `168h` | `0.3848` | `0.4568` | `0.6459` | `0.8103` |
+
+## **Interpretation of the completed results**
+
+### **1. `E14` improves recall but not the primary metric**
+
+Compared with `E12`, `E14` slightly reduces test `PR-AUC` from `0.2918` to `0.2844`, while test `recall` increases from `0.5911` to `0.7076` and balanced accuracy also improves. This suggests that focal loss makes the model more aggressive in identifying future negative-price events, but it does not improve ranking quality under the main project metric. Therefore, `E14` is better interpreted as a recall-oriented operating variant rather than a replacement for the `E12` baseline.
+
+### **2. Renewable features provide the clearest positive signal**
+
+Within the matched `15-country` comparison, `E15B` outperforms `E15A` on test `PR-AUC`, `F1`, `recall`, and balanced accuracy. This is the strongest evidence so far that a deep sequence model can gain predictive value from renewable-related temporal features. The renewables direction is therefore the most promising richer-feature extension for the current deep-learning line.
+
+### **3. The current flow-feature extension is not yet successful**
+
+Within the matched `7-country` comparison, `E16B` does not beat `E16A`. Although `E16B` achieves slightly higher recall and balanced accuracy, it is materially worse on test `PR-AUC`, precision, and `F1`. This means that the current flow-feature formulation does not yet provide a stronger deep-learning setup than the corresponding public-feature baseline on the same country subset.
+
+### **4. Absolute scores across country subsets should not be over-interpreted**
+
+`E16A` delivers the strongest absolute score in this round, but it is a `7-country` subset experiment rather than the full `20-country` main setup. In addition, the richer-feature runs use fewer valid samples because of feature availability. For example, `E15B` contains fewer samples than `E15A`, and `E16B` contains fewer samples than `E16A`. Therefore, the `E15/E16` results should be interpreted as direction signals rather than perfectly clean causal comparisons.
+
+## **Updated experimental judgment**
+
+Based on the completed `E11-E16` results, the current evidence supports the following conclusions:
+
+1. `E12` should remain the main deep-learning reference under the full `20-country + public + h = 6` setup.
+2. `E14` is useful when higher recall is desired, but it does not replace `E12` under a `PR-AUC`-first selection rule.
+3. The renewables track is the most promising next direction for improving deep-learning performance.
+4. The current flow-feature track should be deprioritized unless missing-data handling or comparison quality is improved.
+5. A hybrid model that combines sequence representations with handcrafted features should be considered only after the richer-feature direction has been clarified more cleanly.
