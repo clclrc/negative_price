@@ -126,3 +126,33 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E22B"].countries, configs["E17B"].countries)
         self.assertEqual(configs["E23"].countries, configs["E12"].countries)
         self.assertEqual(configs["E24"].countries, configs["E20"].countries)
+
+    def test_default_configs_include_e23_centered_follow_up_experiments(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E25", "E26", "E27", "E28"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E25"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E26"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E27"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E28"].models, ("GRUHybrid",))
+
+        self.assertEqual(configs["E25"].repeat_random_seeds, (42, 52, 62))
+        self.assertEqual(configs["E26"].sequence_loss, "focal")
+        self.assertEqual(configs["E26"].focal_gamma, 2.0)
+        self.assertEqual(configs["E27"].sequence_max_epochs, 45)
+        self.assertEqual(configs["E27"].sequence_patience, 8)
+        self.assertEqual(configs["E28"].sequence_max_epochs, 45)
+        self.assertEqual(configs["E28"].sequence_patience, 8)
+        self.assertTrue(configs["E28"].allow_window_missing)
+
+        self.assertEqual(configs["E25"].feature_group, "public")
+        self.assertEqual(configs["E26"].feature_group, "public")
+        self.assertEqual(configs["E27"].feature_group, "public")
+        self.assertEqual(configs["E28"].feature_group, "renewables")
+
+        self.assertEqual(configs["E25"].countries, configs["E23"].countries)
+        self.assertEqual(configs["E26"].countries, configs["E23"].countries)
+        self.assertEqual(configs["E27"].countries, configs["E23"].countries)
+        self.assertEqual(configs["E28"].countries, configs["E24"].countries)

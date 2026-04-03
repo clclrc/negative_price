@@ -8,15 +8,16 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 ## Current status
 
 ### Best current deep-learning baseline
-- `E12`: `GRU`, `window=168`, `h=6`, `20-market`, `public features`
+- `E23`: `GRUHybrid`, `window=168`, `h=6`, `20-market`, `public features`
 - Current role:
-  best-performing deep-learning backbone under the main forecasting setup
+  best-performing deep-learning configuration under the main forecasting setup
 
 ### High-level conclusion so far
 - Longer history helps `GRU`
-- `GRU` currently looks more promising than `TCN` and clearly more promising than the current `PatchTST`
+- `GRUHybrid` is now the most promising deep-learning line under the main setup
+- Pure `GRU` currently looks more promising than `TCN` and clearly more promising than the current `PatchTST`
 - Deep learning still underperforms the strongest tree-model baselines
-- The most defensible next step is to continue from `E12` rather than switching backbone again
+- The most defensible next step is now to continue from `E23` rather than reopening older backbone questions
 
 ## Observed signals from completed experiments
 
@@ -78,6 +79,18 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E12` should remain the full `20-country` benchmark
 - `E19` should become the main subset-level development line
 - `E20` should be treated as an exploratory coverage-oriented branch rather than the new mainline model
+
+### Signal group 6: hybrid confirmation on the main setup (`E21-E24`)
+- `E21` confirmed that the `E19` hybrid gain is stable across random seeds, with a mean test `PR-AUC` around `0.283`
+- `E22B` still outperformed `E22A` under the same shared valid-sample subset, so renewable features remain helpful even when the architecture is fixed to `GRUHybrid`
+- `E23` outperformed `E12` on the full `20-country + public + h=6` benchmark, making it the first deep-learning line in this project to beat the earlier full-setup deep baseline on the main metric
+- `E24` did not beat `E23`, so adding missingness-aware renewables back into the full setup is not yet the strongest continuation path
+
+#### Direction implication
+- `E23` should replace `E12` as the main deep-learning benchmark for future rounds
+- `E21` and `E22B` provide supporting evidence that the hybrid gain is both stable and mechanism-aligned
+- `E24` should remain exploratory until it can outperform `E23`
+- The next round should optimize and stress-test the `E23` line rather than broadening the feature space again
 
 ## Direction assessment
 
@@ -216,16 +229,16 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 
 #### Updated judgment
 - Hybrid modeling has now earned follow-up investment
-- The next iteration should focus on confirming and strengthening the `E19` line
-- Hybrid is currently the strongest candidate for the next deep-learning mainline on the renewables subset
+- The next iteration should focus on confirming and strengthening the `E23` line
+- Hybrid is now the strongest deep-learning family in both subset and full-setup comparisons
 
 ## Recommended order
 
-1. Keep `E12` as the main full-setup deep-learning benchmark
-2. Keep `E19` as the main renewables-subset development line
-3. Run repeated-seed validation for `E19`
-4. Compare hybrid `public` versus hybrid `renewables` on the same matched subset
-5. Revisit a `20-country` renewables-hybrid extension only after the hybrid gains are confirmed
+1. Keep `E23` as the main full-setup deep-learning benchmark
+2. Use `E21` and `E22B` as supporting stability and mechanism checks, not as the primary score target
+3. Run repeated-seed validation for `E23`
+4. Test whether imbalance-aware training or a larger training budget improves `E23`
+5. Revisit a `20-country` renewables-hybrid extension only after the `E23` line is better established
 
 ## Implemented next-step experiment definitions
 
@@ -267,6 +280,12 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - It did not beat the main `E12` benchmark on `PR-AUC`
 - This branch should not be the immediate focus of the next round
 
+### Actual outcome from `E21-E24`
+- `E21` showed that the hybrid gain over `E19` is stable but not enormous
+- `E22B > E22A`, so renewable features still help within the hybrid family
+- `E23` is now the strongest deep-learning result under the main `20-country + public` setup
+- `E24` did not beat `E23`, so the current full-setup renewables-hybrid direction should stay secondary
+
 ## Decision rules for the next update
 
 ### If `E14` improves over `E12`
@@ -301,6 +320,19 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - The renewables direction is now confirmed
 - Hybrid is no longer just a justification question; it is the strongest current next-step line
 - Missingness-aware `20-country` renewables remains exploratory rather than decisive
+
+## Next planned experiments around `E23`
+
+- `E25`: repeated-seed version of `E23`
+- `E26`: `E23` plus focal loss to test whether the hybrid mainline responds better than the earlier pure-`GRU` line did
+- `E27`: `E23` plus a larger sequence training budget, such as more epochs and a longer early-stopping patience
+- `E28`: only if `E25-E27` are positive, revisit a `20-country` renewables-aware hybrid line with improved missing-data handling
+
+### Why this is the right next plan
+- `E23` is now the main score target for deep learning
+- `E25` answers whether the full-setup hybrid gain is stable
+- `E26` and `E27` test the two most defensible levers on the same architecture before introducing additional feature-space complexity
+- `E28` is deliberately conditional because `E24` has already shown that simply adding renewables back into the full setup is not enough
 
 ### If richer-feature experiments fail to improve
 - Revisit training stability, sequence data pipeline efficiency, and model calibration before expanding architecture complexity

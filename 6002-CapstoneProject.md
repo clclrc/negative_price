@@ -243,6 +243,40 @@ The main test-set results are:
 
 `E20` successfully increases coverage in the full `20-country` renewables setting, and it also improves recall relative to `E12`. However, it still remains materially below `E12` on the main `PR-AUC` metric. Therefore, this branch should be treated as exploratory rather than as the new main deep-learning configuration.
 
+### **Stage 4: Hybrid confirmation and main-setup breakthrough (`E21-E24`)**
+
+- `E21`: repeated-seed version of `E19`
+- `E22A`: `15-country`, `public`, `GRUHybrid`, `168h`, renewables-shared valid-sample subset
+- `E22B`: `15-country`, `renewables`, `GRUHybrid`, `168h`, same shared valid-sample subset
+- `E23`: `20-country`, `public`, `GRUHybrid`, `168h`
+- `E24`: `20-country`, `renewables`, `GRUHybrid`, `168h`, missingness-aware window retention
+
+The main test-set results are:
+
+| Experiment | Setting | PR-AUC | F1 | Recall | Balanced Accuracy |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `E21` | repeated-seed `E19`, test mean | `0.2826` | `0.3572` | `0.5974` | `0.7814` |
+| `E22A` | `15-country`, `public`, `GRUHybrid`, `168h`, shared subset | `0.2624` | `0.3520` | `0.4646` | `0.7207` |
+| `E22B` | `15-country`, `renewables`, `GRUHybrid`, `168h`, same subset | `0.2735` | `0.3519` | `0.6031` | `0.7836` |
+| `E23` | `20-country`, `public`, `GRUHybrid`, `168h` | `0.3077` | `0.3015` | `0.6694` | `0.8089` |
+| `E24` | `20-country`, `renewables`, `GRUHybrid`, `168h`, missingness-aware | `0.2802` | `0.3396` | `0.6462` | `0.8011` |
+
+### **9. The hybrid gain is stable**
+
+`E21` shows that the `E19`-style hybrid gain is not a single-run accident. The repeated-seed mean remains above the single-seed `E19` result, which strengthens confidence that hybrid fusion is genuinely useful rather than a one-off training fluctuation.
+
+### **10. Renewable features still help within the hybrid family**
+
+`E22B` outperforms `E22A` on test `PR-AUC`, recall, and balanced accuracy under the same shared valid-sample subset. This means the renewables direction remains meaningful even after switching from pure sequence modeling to a hybrid architecture.
+
+### **11. `E23` is the new main deep-learning line**
+
+`E23` is the most important result of this round. It improves over `E12` on the full `20-country + public + h = 6` setup, which makes it the strongest current deep-learning configuration under the main project definition. This is the first deep-learning line in the project that clearly exceeds the earlier full-setup `GRU` baseline on the primary metric.
+
+### **12. Full-setup renewables-aware hybrid is not yet ready**
+
+`E24` does not beat `E23`. Although it improves some threshold-based metrics relative to earlier baselines, it still falls short of the simpler `20-country + public + GRUHybrid` model on test `PR-AUC`. The current evidence therefore supports keeping `E24` as an exploratory branch rather than promoting it to the new mainline.
+
 ## **Updated experimental judgment**
 
 Based on the completed `E11-E16` results, the current evidence supports the following conclusions:
@@ -260,19 +294,22 @@ Based on the completed `E17-E20` results, the updated evidence now supports the 
 8. `E18` confirms that the renewables benefit is stable but modest in magnitude.
 9. `E20` improves coverage and recall, but it does not yet outperform the full `20-country` `E12` baseline on the main metric.
 
+Based on the completed `E21-E24` results, the updated evidence now supports the following further refinement:
+
+10. `E23` should replace `E12` as the main deep-learning benchmark under the full project setup.
+11. `E21` confirms that the hybrid gain is stable enough to justify continued investment.
+12. `E22B > E22A` shows that renewable features still help after moving to a hybrid architecture.
+13. `E24` does not yet justify expanding the full mainline back to missingness-aware renewables.
+
 ## **Next experimental plan**
 
-The next round should be narrower and more disciplined than the earlier exploration stages.
+The next round should now focus only on strengthening the `E23` line rather than broadening the feature space again.
 
-1. `E21`: repeated-seed version of `E19`.  
-   Goal: verify whether the hybrid gain over `E17B` is stable across random seeds.
-2. `E22A`: `15-country`, `public`, `GRUHybrid`, `window = 168`, `h = 6`, on the same renewables-shared valid-sample subset.  
-   Goal: isolate whether the hybrid architecture still benefits from renewable features when the architecture is held fixed.
-3. `E22B`: `15-country`, `renewables`, `GRUHybrid`, `window = 168`, `h = 6`, same subset.  
-   Goal: compare directly against `E22A` and confirm complementarity between hybrid fusion and renewable features.
-4. `E23`: `20-country`, `public`, `GRUHybrid`, `window = 168`, `h = 6`.  
-   Goal: test whether the hybrid architecture itself improves the full main setup before reintroducing missing-data-heavy renewable inputs.
-5. `E24`: only if `E21-E23` are positive, attempt a `20-country`, renewables-aware hybrid experiment with improved missing-data handling.  
-   Goal: bring the best hybrid idea back to the full main forecasting task.
-
-These `E21-E24` experiment definitions are now also implemented in the codebase as runnable config defaults, so the next round can be launched directly without additional pipeline changes.
+1. `E25`: repeated-seed version of `E23`.  
+   Goal: verify whether the `E23` gain over `E12` is stable across random seeds.
+2. `E26`: `E23` plus focal loss.  
+   Goal: test whether the current best hybrid mainline responds more favorably to imbalance-aware training than the earlier pure-`GRU` line did.
+3. `E27`: `E23` plus a larger training budget, such as more epochs and a longer early-stopping patience.  
+   Goal: test whether the current `E23` result is still optimization-limited.
+4. `E28`: only if `E25-E27` remain positive, revisit a `20-country`, renewables-aware hybrid line with improved missing-data handling.  
+   Goal: attempt a stronger full-setup renewables-hybrid branch only after the public-feature hybrid mainline has been thoroughly validated.

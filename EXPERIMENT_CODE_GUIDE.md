@@ -62,10 +62,14 @@ Extended experiment IDs:
 - `E22B`: 15-market renewables-feature `GRUHybrid` experiment on the same shared valid-sample subset, `window=168`, `h=6`
 - `E23`: 20-market public-feature `GRUHybrid` experiment, `window=168`, `h=6`
 - `E24`: 20-market renewables-feature `GRUHybrid` experiment with missingness-aware window retention, `window=168`, `h=6`
+- `E25`: repeated-seed version of `E23` with aggregated metrics across multiple random seeds
+- `E26`: 20-market public-feature `GRUHybrid` experiment with focal loss, `window=168`, `h=6`
+- `E27`: 20-market public-feature `GRUHybrid` experiment with a larger sequence training budget, `window=168`, `h=6`
+- `E28`: 20-market renewables-feature `GRUHybrid` experiment with missingness-aware window retention and a larger sequence training budget, `window=168`, `h=6`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, and `E24` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, and `E28` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -77,6 +81,10 @@ Important:
 - `E22A/E22B` let the repository compare hybrid `public` versus hybrid `renewables` under the same shared valid-sample subset
 - `E23` tests whether the hybrid architecture itself helps on the full `20-country` main setup
 - `E24` is the current full-setup renewables-aware hybrid extension
+- `E25` is the repeated-seed stability check for the `E23` mainline
+- `E26` tests whether the full-setup hybrid line benefits from focal loss
+- `E27` tests whether the full-setup hybrid line benefits from a larger training budget
+- `E28` revisits the full-setup renewables-aware hybrid line with both missingness-aware retention and a larger training budget
 
 All default experiment definitions are created in:
 
@@ -114,14 +122,12 @@ python3 run_negative_price_experiments.py \
 
 Current next deep-learning phase:
 
-- first run `E11-E13` to select the strongest deep sequence model and history window
-- run `E14` as the imbalance-aware continuation of the selected `GRU + 168h` backbone
-- then compare richer-feature paired experiments `E15A/E15B` and `E16A/E16B`
-- then run `E17A/E17B` for the cleaner shared-valid-sample renewables comparison
-- use `E18` to measure seed stability once the `E17B` direction is accepted
-- use `E19` to test hybrid fusion of sequence and handcrafted features
-- use `E20` to bring renewables back to the full 20-country setup with missingness-aware handling
-- use `E21-E24` to turn the best current hybrid idea into the main next-stage comparison set
+- `E23` is the current main deep-learning benchmark for the full `20-country` setup
+- use `E25` to measure seed stability for that full-setup hybrid benchmark
+- use `E26` to test whether focal loss helps the `E23` line
+- use `E27` to test whether a larger training budget helps the `E23` line
+- keep `E24` and `E28` as the conditional renewables-aware full-setup branch rather than the default mainline
+- keep `E21` and `E22A/E22B` as supporting evidence that the hybrid and renewables directions were real before the mainline switched to `E23`
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -167,7 +173,7 @@ Sample construction rules in `negative_price_experiments/data.py`:
 - Then apply country-local `ffill(limit=3)`
 - If any selected input feature is still missing inside the input window after forward fill, drop the sample
 - `E17A/E17B` can override which feature group defines valid windows through a shared sample-filter feature group
-- `E20` can preserve windows with missing renewable inputs and expose that missingness through mask channels instead of dropping the sample
+- `E20`, `E24`, and `E28` can preserve windows with missing renewable inputs and expose that missingness through mask channels instead of dropping the sample
 
 Important:
 
@@ -210,13 +216,13 @@ Country handling:
 
 - `E1-E5,E7-E9` tabular models use country one-hot
 - `E1-E5,E10` sequence models use country embedding
-- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24` sequence experiments also use country embedding
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28` sequence experiments also use country embedding
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
 Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
-`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24` follow the same target-time-based fold protocol.
+`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28` follow the same target-time-based fold protocol.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -257,8 +263,8 @@ Sequence model implementation notes:
 - Training is CPU-compatible
 - Validation model selection uses best checkpoint by validation PR-AUC
 - Final full-train models are retrained from scratch using the selected epoch count
-- the current default sequence setup uses a `72` hour historical window in implemented configs
-- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24` explicitly test longer windows so the model can observe more historical hours before `t+h`
+- the original sequence baselines use a `72` hour historical window
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28` explicitly test longer windows so the model can observe more historical hours before `t+h`
 
 Robustness behavior:
 
@@ -346,11 +352,11 @@ Preferred extension order:
 
 For the current roadmap:
 
-- implement `E11-E13` first
-- review their validation and test behavior
-- use `E15A/E15B` and `E16A/E16B` as the first richer-feature follow-ups
-- use `E17A/E17B` when a stricter shared-valid-sample renewables comparison is required
-- use `E18` for seed stability and `E19` for hybrid follow-up only after the renewables direction is accepted
+- keep `E23` as the main full-setup deep-learning baseline
+- use `E25` to measure whether `E23` is stable across random seeds
+- use `E26` and `E27` as the first architecture-preserving follow-ups on that same line
+- treat `E24` and `E28` as the conditional full-setup renewables-aware branch
+- keep `E21` and `E22A/E22B` as supporting evidence for why the project moved from pure `GRU` models to the hybrid mainline
 
 ## Practical note on file placement
 
