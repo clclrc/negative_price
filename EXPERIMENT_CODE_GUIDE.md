@@ -57,10 +57,15 @@ Extended experiment IDs:
 - `E18`: repeated-seed version of `E17B` with aggregated metrics across multiple random seeds
 - `E19`: 15-market renewables-feature `GRUHybrid` experiment that fuses sequence representations with handcrafted tabular features
 - `E20`: 20-market renewables-feature `GRU` experiment with missingness-aware window retention, `window=168`, `h=6`
+- `E21`: repeated-seed version of `E19` with aggregated metrics across multiple random seeds
+- `E22A`: 15-market public-feature `GRUHybrid` experiment on the renewables-shared valid-sample subset, `window=168`, `h=6`
+- `E22B`: 15-market renewables-feature `GRUHybrid` experiment on the same shared valid-sample subset, `window=168`, `h=6`
+- `E23`: 20-market public-feature `GRUHybrid` experiment, `window=168`, `h=6`
+- `E24`: 20-market renewables-feature `GRUHybrid` experiment with missingness-aware window retention, `window=168`, `h=6`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, and `E20` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, and `E24` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -68,6 +73,10 @@ Important:
 - `E18` wraps repeated random seeds internally and writes both raw and aggregated metrics
 - `E19` is the first implemented hybrid deep-learning experiment in this repository
 - `E20` keeps sequence windows with missing renewable inputs and relies on missingness masks instead of dropping those samples
+- `E21` extends the hybrid line with repeated-seed stability reporting
+- `E22A/E22B` let the repository compare hybrid `public` versus hybrid `renewables` under the same shared valid-sample subset
+- `E23` tests whether the hybrid architecture itself helps on the full `20-country` main setup
+- `E24` is the current full-setup renewables-aware hybrid extension
 
 All default experiment definitions are created in:
 
@@ -112,6 +121,7 @@ Current next deep-learning phase:
 - use `E18` to measure seed stability once the `E17B` direction is accepted
 - use `E19` to test hybrid fusion of sequence and handcrafted features
 - use `E20` to bring renewables back to the full 20-country setup with missingness-aware handling
+- use `E21-E24` to turn the best current hybrid idea into the main next-stage comparison set
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -200,13 +210,13 @@ Country handling:
 
 - `E1-E5,E7-E9` tabular models use country one-hot
 - `E1-E5,E10` sequence models use country embedding
-- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20` sequence experiments also use country embedding
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24` sequence experiments also use country embedding
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
 Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
-`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20` follow the same target-time-based fold protocol.
+`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24` follow the same target-time-based fold protocol.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -248,7 +258,7 @@ Sequence model implementation notes:
 - Validation model selection uses best checkpoint by validation PR-AUC
 - Final full-train models are retrained from scratch using the selected epoch count
 - the current default sequence setup uses a `72` hour historical window in implemented configs
-- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20` explicitly test longer windows so the model can observe more historical hours before `t+h`
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24` explicitly test longer windows so the model can observe more historical hours before `t+h`
 
 Robustness behavior:
 

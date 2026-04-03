@@ -94,3 +94,35 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E17A"].countries, configs["E15A"].countries)
         self.assertEqual(configs["E17B"].countries, configs["E15B"].countries)
         self.assertEqual(configs["E20"].countries, configs["E12"].countries)
+
+    def test_default_configs_include_hybrid_follow_up_experiments(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E21", "E22A", "E22B", "E23", "E24"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E21"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E22A"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E22B"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E23"].models, ("GRUHybrid",))
+        self.assertEqual(configs["E24"].models, ("GRUHybrid",))
+
+        self.assertEqual(configs["E21"].repeat_random_seeds, (42, 52, 62))
+        self.assertEqual(configs["E22A"].sample_filter_feature_group, "renewables")
+        self.assertEqual(configs["E22B"].sample_filter_feature_group, "renewables")
+        self.assertIsNone(configs["E23"].sample_filter_feature_group)
+        self.assertIsNone(configs["E24"].sample_filter_feature_group)
+
+        self.assertTrue(configs["E24"].allow_window_missing)
+        self.assertFalse(configs["E23"].allow_window_missing)
+
+        self.assertEqual(configs["E22A"].feature_group, "public")
+        self.assertEqual(configs["E22B"].feature_group, "renewables")
+        self.assertEqual(configs["E23"].feature_group, "public")
+        self.assertEqual(configs["E24"].feature_group, "renewables")
+
+        self.assertEqual(configs["E21"].countries, configs["E17B"].countries)
+        self.assertEqual(configs["E22A"].countries, configs["E17A"].countries)
+        self.assertEqual(configs["E22B"].countries, configs["E17B"].countries)
+        self.assertEqual(configs["E23"].countries, configs["E12"].countries)
+        self.assertEqual(configs["E24"].countries, configs["E20"].countries)

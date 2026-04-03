@@ -65,6 +65,20 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Decrease priority of the current flow track until there is a cleaner or stronger feature formulation
 - Continue to defer hybrid modeling until the richer-feature direction is better understood
 
+### Signal group 5: cleaner renewables validation and hybrid follow-up (`E17-E20`)
+- `E17B` outperformed `E17A` on the same shared valid-sample subset, so the renewables gain is not just a sample-selection artifact
+- The uplift remains meaningful but smaller than the original `E15B` versus `E15A` gap, which means part of the earlier gain did come from sample filtering
+- `E18` confirmed that the `E17B`-style renewables gain is stable across random seeds, but the mean test `PR-AUC` is still only around `0.263`
+- `E19` (`GRUHybrid`) improved over `E17B` on test `PR-AUC`, `precision`, and `F1`, making it the strongest current result on the matched `15-country` renewables subset
+- `E20` increased sample coverage and recall in the `20-country` renewables setting, but it still underperformed `E12` on the main `PR-AUC` metric
+
+#### Direction implication
+- The renewables track is now confirmed rather than merely suggested
+- Hybrid modeling is no longer a deferred idea; it has become the most promising next deep-learning line
+- `E12` should remain the full `20-country` benchmark
+- `E19` should become the main subset-level development line
+- `E20` should be treated as an exploratory coverage-oriented branch rather than the new mainline model
+
 ## Direction assessment
 
 ### Direction A: `E14 = E12 + focal loss`
@@ -189,16 +203,29 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - If used before `E14-E16`, it becomes much harder to interpret whether gains come from better temporal learning or simply from adding engineered features
 
 #### Recommendation
-- Do not prioritize this immediately
-- Add hybrid experiments only after `E14-E16` clarify whether the `E12` line improves under better loss design and richer feature groups
+- This direction is now high priority
+- Use `E19` as the first strong hybrid reference result
+- Continue hybrid development before spending more effort on the current `E20`-style missingness-aware renewables line
+
+#### Observed outcome
+- `E19` improved test `PR-AUC` from `0.2665` (`E17B`) to `0.2775`
+- `E19` improved test `F1` from `0.3186` to `0.3588`
+- `E19` improved test `precision` from `0.2121` to `0.2568`
+- `E19` did give up some recall relative to `E17B`, but the overall trade-off is better under the current objective
+- `E19` also showed a smaller validation-to-test drop than the pure-sequence renewables line
+
+#### Updated judgment
+- Hybrid modeling has now earned follow-up investment
+- The next iteration should focus on confirming and strengthening the `E19` line
+- Hybrid is currently the strongest candidate for the next deep-learning mainline on the renewables subset
 
 ## Recommended order
 
-1. Keep `E12` as the main full-setup deep-learning reference
-2. Use `E14` only when a higher-recall operating point is desired
-3. Prioritize the renewables track over the flow track
-4. Build a cleaner matched-sample comparison for `public` versus `renewables`
-5. Reassess whether a hybrid experiment should be introduced after the renewables follow-up
+1. Keep `E12` as the main full-setup deep-learning benchmark
+2. Keep `E19` as the main renewables-subset development line
+3. Run repeated-seed validation for `E19`
+4. Compare hybrid `public` versus hybrid `renewables` on the same matched subset
+5. Revisit a `20-country` renewables-hybrid extension only after the hybrid gains are confirmed
 
 ## Implemented next-step experiment definitions
 
@@ -207,12 +234,38 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E18`: repeated-seed version of `E17B`, currently configured with three random seeds and root-level aggregated metrics
 - `E19`: `15-country`, `renewables`, `GRUHybrid`, `window=168`, `h=6`, combining sequence representations with handcrafted tabular features
 - `E20`: `20-country`, `renewables`, `GRU`, `window=168`, `h=6`, with missingness-aware window retention instead of dropping windows that still contain missing renewable inputs
+- `E21`: repeated-seed version of `E19`, currently configured with three random seeds and root-level aggregated metrics
+- `E22A`: `15-country`, `public`, `GRUHybrid`, `window=168`, `h=6`, using the renewables-shared valid sample subset
+- `E22B`: `15-country`, `renewables`, `GRUHybrid`, `window=168`, `h=6`, using the same shared valid sample subset
+- `E23`: `20-country`, `public`, `GRUHybrid`, `window=168`, `h=6`
+- `E24`: `20-country`, `renewables`, `GRUHybrid`, `window=168`, `h=6`, with missingness-aware window retention
 
 ### Why these are the next coded experiments
 - `E17A/E17B` make the renewables comparison cleaner than `E15A/E15B`
 - `E18` checks whether the renewables gain is stable across random seeds
 - `E19` becomes meaningful only after the renewables direction has shown positive evidence
 - `E20` attempts to bring the renewables direction back to the full main-country setting without collapsing the sample count
+- `E21` does for the hybrid line what `E18` did for the pure-sequence renewables line
+- `E22A/E22B` isolate whether hybrid still benefits from renewable features when the architecture is held fixed
+- `E23` tests whether hybrid helps the main `20-country + public` benchmark before adding missing-data-heavy renewables
+- `E24` is the first full-setup renewables-aware hybrid extension
+
+### Actual outcome from `E17A/E17B`
+- This cleaner comparison still favored `renewables`
+- The renewables gain is therefore real, though more modest than the original `E15` comparison suggested
+
+### Actual outcome from `E18`
+- The renewables lift remained stable across seeds
+- The gain is credible but not large enough on its own to change the project's main benchmark hierarchy
+
+### Actual outcome from `E19`
+- Hybrid produced the best current result on the matched renewables subset
+- This is now the most justified direction for the next round
+
+### Actual outcome from `E20`
+- Missingness-aware renewables on `20` countries improved coverage and recall
+- It did not beat the main `E12` benchmark on `PR-AUC`
+- This branch should not be the immediate focus of the next round
 
 ## Decision rules for the next update
 
@@ -243,6 +296,11 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 
 ### If richer-feature experiments improve substantially
 - Hybrid becomes more justified as a score-maximization and complementarity test
+
+### Actual outcome from `E17-E20`
+- The renewables direction is now confirmed
+- Hybrid is no longer just a justification question; it is the strongest current next-step line
+- Missingness-aware `20-country` renewables remains exploratory rather than decisive
 
 ### If richer-feature experiments fail to improve
 - Revisit training stability, sequence data pipeline efficiency, and model calibration before expanding architecture complexity

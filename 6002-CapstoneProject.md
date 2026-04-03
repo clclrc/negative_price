@@ -209,6 +209,40 @@ Within the matched `7-country` comparison, `E16B` does not beat `E16A`. Although
 
 `E16A` delivers the strongest absolute score in this round, but it is a `7-country` subset experiment rather than the full `20-country` main setup. In addition, the richer-feature runs use fewer valid samples because of feature availability. For example, `E15B` contains fewer samples than `E15A`, and `E16B` contains fewer samples than `E16A`. Therefore, the `E15/E16` results should be interpreted as direction signals rather than perfectly clean causal comparisons.
 
+### **Stage 3: Cleaner renewables validation and hybrid follow-up (`E17-E20`)**
+
+- `E17A`: `15-country`, `public`, `GRU`, `168h`, renewables-shared valid-sample subset
+- `E17B`: `15-country`, `renewables`, `GRU`, `168h`, same shared valid-sample subset
+- `E18`: repeated-seed version of `E17B`
+- `E19`: `15-country`, `renewables`, `GRUHybrid`, `168h`
+- `E20`: `20-country`, `renewables`, `GRU`, `168h`, missingness-aware window retention
+
+The main test-set results are:
+
+| Experiment | Setting | PR-AUC | F1 | Recall | Balanced Accuracy |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `E17A` | `15-country`, `public`, `GRU`, `168h`, shared renewables-valid subset | `0.2361` | `0.3224` | `0.5260` | `0.7459` |
+| `E17B` | `15-country`, `renewables`, `GRU`, `168h`, same subset | `0.2665` | `0.3186` | `0.6394` | `0.7963` |
+| `E18` | repeated-seed `E17B`, test mean | `0.2627` | `0.3251` | `0.6000` | `0.7792` |
+| `E19` | `15-country`, `renewables`, `GRUHybrid`, `168h` | `0.2775` | `0.3588` | `0.5953` | `0.7806` |
+| `E20` | `20-country`, `renewables`, `GRU`, `168h`, missingness-aware | `0.2574` | `0.3202` | `0.6634` | `0.8064` |
+
+### **5. The renewables gain remains after sample matching**
+
+`E17A` and `E17B` use the same valid sample pool. Under this stricter comparison, `E17B` still improves over `E17A` on test `PR-AUC`, recall, and balanced accuracy. This shows that the renewables direction is genuinely useful rather than being only an artifact of different sample availability. At the same time, the uplift is smaller than the original `E15A/E15B` comparison suggested, which means part of the earlier apparent gain did come from sample filtering.
+
+### **6. The renewables result is stable, but still modest**
+
+`E18` confirms that the `E17B`-style renewables gain is stable across random seeds. The repeated-seed mean test `PR-AUC` remains around `0.263`, so the effect is credible. However, the gain is not large enough by itself to challenge the main `20-country` benchmark hierarchy.
+
+### **7. Hybrid modeling is the strongest next-step line**
+
+`E19` improves over `E17B` on test `PR-AUC`, precision, and `F1`, making it the strongest result on the matched `15-country` renewables subset. This suggests that learned temporal representations and handcrafted statistical summaries are complementary in this task. Hybrid modeling is therefore no longer a purely hypothetical extension; it has become the most promising deep-learning direction for the next round.
+
+### **8. Missingness-aware 20-country renewables is not yet a new mainline**
+
+`E20` successfully increases coverage in the full `20-country` renewables setting, and it also improves recall relative to `E12`. However, it still remains materially below `E12` on the main `PR-AUC` metric. Therefore, this branch should be treated as exploratory rather than as the new main deep-learning configuration.
+
 ## **Updated experimental judgment**
 
 Based on the completed `E11-E16` results, the current evidence supports the following conclusions:
@@ -218,3 +252,27 @@ Based on the completed `E11-E16` results, the current evidence supports the foll
 3. The renewables track is the most promising next direction for improving deep-learning performance.
 4. The current flow-feature track should be deprioritized unless missing-data handling or comparison quality is improved.
 5. A hybrid model that combines sequence representations with handcrafted features should be considered only after the richer-feature direction has been clarified more cleanly.
+
+Based on the completed `E17-E20` results, the updated evidence now supports the following refinement:
+
+6. The renewables direction has been confirmed under a stricter matched-sample comparison.
+7. `E19` is now the strongest current development line on the renewables subset.
+8. `E18` confirms that the renewables benefit is stable but modest in magnitude.
+9. `E20` improves coverage and recall, but it does not yet outperform the full `20-country` `E12` baseline on the main metric.
+
+## **Next experimental plan**
+
+The next round should be narrower and more disciplined than the earlier exploration stages.
+
+1. `E21`: repeated-seed version of `E19`.  
+   Goal: verify whether the hybrid gain over `E17B` is stable across random seeds.
+2. `E22A`: `15-country`, `public`, `GRUHybrid`, `window = 168`, `h = 6`, on the same renewables-shared valid-sample subset.  
+   Goal: isolate whether the hybrid architecture still benefits from renewable features when the architecture is held fixed.
+3. `E22B`: `15-country`, `renewables`, `GRUHybrid`, `window = 168`, `h = 6`, same subset.  
+   Goal: compare directly against `E22A` and confirm complementarity between hybrid fusion and renewable features.
+4. `E23`: `20-country`, `public`, `GRUHybrid`, `window = 168`, `h = 6`.  
+   Goal: test whether the hybrid architecture itself improves the full main setup before reintroducing missing-data-heavy renewable inputs.
+5. `E24`: only if `E21-E23` are positive, attempt a `20-country`, renewables-aware hybrid experiment with improved missing-data handling.  
+   Goal: bring the best hybrid idea back to the full main forecasting task.
+
+These `E21-E24` experiment definitions are now also implemented in the codebase as runnable config defaults, so the next round can be launched directly without additional pipeline changes.
