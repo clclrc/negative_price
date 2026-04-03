@@ -73,6 +73,14 @@ Any future conversation, revision, analysis, or code change in this directory sh
 ## Code guide
 For experiment implementation details, code entrypoints, module responsibilities, artifact outputs, and extension rules, read [EXPERIMENT_CODE_GUIDE.md](./EXPERIMENT_CODE_GUIDE.md) before changing the experiment pipeline.
 
+## Literature experiment guide
+For literature-informed experiment design guidance, read [LITERATURE_EXPERIMENT_GUIDE.md](./LITERATURE_EXPERIMENT_GUIDE.md) before proposing new experiment families, changing the main modeling direction, or justifying why a new experiment is worth running.
+
+This document exists to convert the related literature into practical experiment decisions for this repository. It should be used to keep future experiment planning aligned with:
+- the project's event-prediction framing rather than plain price regression,
+- literature-supported priorities such as calibration, mechanism-aware feature design, and benchmark discipline,
+- and a defensible experiment order for future work after the current `E23/E25-E28` line.
+
 ## Direction log
 The latest experiment-direction judgment should be recorded in [EXPERIMENT_DIRECTION_NOTES.md](./EXPERIMENT_DIRECTION_NOTES.md).
 

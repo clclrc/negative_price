@@ -98,7 +98,7 @@ CORE_TABULAR_MODELS = ("Majority", "LogisticRegression", "XGBoost")
 ADVANCED_TABULAR_MODELS = ("LightGBM", "CatBoost", "XGBoostWeightedCalibrated")
 TABULAR_MODELS = CORE_TABULAR_MODELS + ADVANCED_TABULAR_MODELS
 CORE_SEQUENCE_MODELS = ("GRU", "TCN")
-ADVANCED_SEQUENCE_MODELS = ("PatchTST", "GRUHybrid")
+ADVANCED_SEQUENCE_MODELS = ("PatchTST", "GRUHybrid", "GRUHybridAttn", "GRUHybridGated", "GRUHybridGatedMultiTask")
 SEQUENCE_MODELS = CORE_SEQUENCE_MODELS + ADVANCED_SEQUENCE_MODELS
 DEFAULT_MODELS = CORE_TABULAR_MODELS + CORE_SEQUENCE_MODELS
 
@@ -153,9 +153,12 @@ class ExperimentConfig:
     sequence_patience: int = 5
     sequence_loss: str = "bce"
     focal_gamma: float = 2.0
+    sequence_aux_target: str | None = None
+    sequence_aux_weight: float = 0.2
     sample_filter_feature_group: str | None = None
     allow_window_missing: bool = False
     repeat_random_seeds: tuple[int, ...] = ()
+    use_mechanism_features: bool = False
 
     @property
     def numeric_features(self) -> tuple[str, ...]:
@@ -550,6 +553,54 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             allow_window_missing=True,
             sequence_max_epochs=45,
             sequence_patience=8,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E29": ExperimentConfig(
+            name="E29",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybridAttn",),
+            sequence_max_epochs=60,
+            sequence_patience=10,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E30": ExperimentConfig(
+            name="E30",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybridGated",),
+            sequence_max_epochs=60,
+            sequence_patience=10,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E31": ExperimentConfig(
+            name="E31",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybridGated",),
+            sequence_max_epochs=60,
+            sequence_patience=10,
+            use_mechanism_features=True,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E32": ExperimentConfig(
+            name="E32",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybridGatedMultiTask",),
+            sequence_max_epochs=60,
+            sequence_patience=10,
+            sequence_aux_target="target_price",
+            sequence_aux_weight=0.2,
+            use_mechanism_features=True,
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
         ),
     }

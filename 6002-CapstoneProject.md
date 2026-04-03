@@ -313,3 +313,16 @@ The next round should now focus only on strengthening the `E23` line rather than
    Goal: test whether the current `E23` result is still optimization-limited.
 4. `E28`: only if `E25-E27` remain positive, revisit a `20-country`, renewables-aware hybrid line with improved missing-data handling.  
    Goal: attempt a stronger full-setup renewables-hybrid branch only after the public-feature hybrid mainline has been thoroughly validated.
+
+### **Prepared follow-on experiments after `E25-E28`**
+
+The repository now also includes a prepared next model-design branch around the same full benchmark:
+
+1. `E29`: `GRUHybridAttn`.  
+   Goal: test whether temporal attention pooling over the `168h` window is better than using only the final `GRU` hidden state.
+2. `E30`: `GRUHybridGated`.  
+   Goal: test whether gated fusion between sequence and handcrafted tabular features is better than simple concatenation.
+3. `E31`: mechanism-aware `GRUHybridGated`.  
+   Goal: add engineered ramp, drawdown, anomaly, and calendar-interaction features without changing the main task definition.
+4. `E32`: multi-task mechanism-aware `GRUHybridGated`.  
+   Goal: keep future negative-price event probability as the main output while adding an auxiliary future-price target to improve representation learning.

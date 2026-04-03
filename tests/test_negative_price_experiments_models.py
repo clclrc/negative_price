@@ -50,6 +50,51 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
         )
         self.assertEqual(model.__class__.__name__, "GRUHybridClassifier")
 
+    def test_builds_next_generation_hybrid_sequence_models(self) -> None:
+        attn = build_sequence_model(
+            "GRUHybridAttn",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        gated = build_sequence_model(
+            "GRUHybridGated",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        multitask = build_sequence_model(
+            "GRUHybridGatedMultiTask",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        self.assertEqual(attn.__class__.__name__, "GRUHybridAttnClassifier")
+        self.assertEqual(gated.__class__.__name__, "GRUHybridGatedClassifier")
+        self.assertEqual(multitask.__class__.__name__, "GRUHybridGatedMultiTaskClassifier")
+
+    def test_multitask_hybrid_forward_returns_logits_and_auxiliary_output(self) -> None:
+        model = build_sequence_model(
+            "GRUHybridGatedMultiTask",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        x = torch.randn(2, 8, 4)
+        country_idx = torch.tensor([0, 1], dtype=torch.long)
+        tabular_x = torch.randn(2, 6)
+
+        logits, aux = model(x, country_idx, tabular_x)
+
+        self.assertEqual(tuple(logits.shape), (2,))
+        self.assertEqual(tuple(aux.shape), (2,))
+        self.assertTrue(torch.isfinite(logits).all())
+        self.assertTrue(torch.isfinite(aux).all())
+
 
 @unittest.skipUnless(HAS_TORCH, "torch is required for focal loss tests")
 class NegativePriceModelLossTest(unittest.TestCase):

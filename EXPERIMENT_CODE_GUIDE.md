@@ -66,10 +66,14 @@ Extended experiment IDs:
 - `E26`: 20-market public-feature `GRUHybrid` experiment with focal loss, `window=168`, `h=6`
 - `E27`: 20-market public-feature `GRUHybrid` experiment with a larger sequence training budget, `window=168`, `h=6`
 - `E28`: 20-market renewables-feature `GRUHybrid` experiment with missingness-aware window retention and a larger sequence training budget, `window=168`, `h=6`
+- `E29`: 20-market public-feature `GRUHybridAttn` experiment with temporal attention pooling, `window=168`, `h=6`
+- `E30`: 20-market public-feature `GRUHybridGated` experiment with gated sequence-tabular fusion, `window=168`, `h=6`
+- `E31`: 20-market public-feature `GRUHybridGated` experiment with mechanism-aware engineered tabular features, `window=168`, `h=6`
+- `E32`: 20-market public-feature `GRUHybridGatedMultiTask` experiment with mechanism-aware features and an auxiliary future-price target, `window=168`, `h=6`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, and `E28` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, and `E32` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -85,6 +89,10 @@ Important:
 - `E26` tests whether the full-setup hybrid line benefits from focal loss
 - `E27` tests whether the full-setup hybrid line benefits from a larger training budget
 - `E28` revisits the full-setup renewables-aware hybrid line with both missingness-aware retention and a larger training budget
+- `E29` tests whether temporal attention pooling helps the `E23`-style hybrid line under the same full setup
+- `E30` tests whether gated fusion between sequence and tabular representations helps more than simple concatenation
+- `E31` keeps the `E30`-style gated hybrid but adds mechanism-aware engineered features such as ramps, drawdowns, and calendar interactions
+- `E32` adds a future-price auxiliary target to the `E31`-style mainline while keeping future-event classification as the primary output
 
 All default experiment definitions are created in:
 
@@ -128,6 +136,7 @@ Current next deep-learning phase:
 - use `E27` to test whether a larger training budget helps the `E23` line
 - keep `E24` and `E28` as the conditional renewables-aware full-setup branch rather than the default mainline
 - keep `E21` and `E22A/E22B` as supporting evidence that the hybrid and renewables directions were real before the mainline switched to `E23`
+- once the current `E25-E28` round is judged, use `E29-E32` as the next model-design branch around the same full benchmark rather than switching to a transformer-first line
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -216,13 +225,13 @@ Country handling:
 
 - `E1-E5,E7-E9` tabular models use country one-hot
 - `E1-E5,E10` sequence models use country embedding
-- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28` sequence experiments also use country embedding
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28,E29,E30,E31,E32` sequence experiments also use country embedding
 - `E6` disables country features and country embedding on purpose so the encoder can transfer to unseen target markets
 
 ## Split protocol
 
 Default walk-forward validation folds for `E1-E5` and `E7-E10` are defined in `WALK_FORWARD_FOLDS`.
-`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28` follow the same target-time-based fold protocol.
+`E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28,E29,E30,E31,E32` follow the same target-time-based fold protocol.
 The final retraining and final test windows are defined in:
 
 - `FINAL_TRAIN_RANGE`
@@ -249,6 +258,9 @@ Implemented sequence models:
 
 - `GRU`
 - `GRUHybrid`
+- `GRUHybridAttn`
+- `GRUHybridGated`
+- `GRUHybridGatedMultiTask`
 - `TCN`
 - `PatchTST`
 
@@ -264,7 +276,7 @@ Sequence model implementation notes:
 - Validation model selection uses best checkpoint by validation PR-AUC
 - Final full-train models are retrained from scratch using the selected epoch count
 - the original sequence baselines use a `72` hour historical window
-- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28` explicitly test longer windows so the model can observe more historical hours before `t+h`
+- `E11-E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28,E29,E30,E31,E32` explicitly test longer windows so the model can observe more historical hours before `t+h`
 
 Robustness behavior:
 
@@ -357,6 +369,9 @@ For the current roadmap:
 - use `E26` and `E27` as the first architecture-preserving follow-ups on that same line
 - treat `E24` and `E28` as the conditional full-setup renewables-aware branch
 - keep `E21` and `E22A/E22B` as supporting evidence for why the project moved from pure `GRU` models to the hybrid mainline
+- use `E29` and `E30` as the first architectural follow-ups once the `E23` line is stable enough
+- use `E31` to test mechanism-aware engineered features without changing the main task definition
+- use `E32` to test multi-task event-plus-price learning only after the stronger single-task hybrids are available
 
 ## Practical note on file placement
 

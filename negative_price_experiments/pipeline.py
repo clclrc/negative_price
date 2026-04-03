@@ -67,6 +67,7 @@ XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES = (
     {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 400, "calibration": "isotonic"},
     {"max_depth": 6, "learning_rate": 0.1, "n_estimators": 250, "calibration": "isotonic"},
 )
+HYBRID_SEQUENCE_MODELS = ("GRUHybrid", "GRUHybridAttn", "GRUHybridGated", "GRUHybridGatedMultiTask")
 
 
 def run_experiment(
@@ -745,7 +746,7 @@ def _evaluate_model_across_folds(
         return _evaluate_catboost(prepared, config, folds, reporter=reporter)
     if model_name == "XGBoostWeightedCalibrated":
         return _evaluate_xgboost_weighted_calibrated(prepared, config, folds, reporter=reporter)
-    if model_name in ("GRU", "TCN", "PatchTST", "GRUHybrid"):
+    if model_name in ("GRU", "TCN", "PatchTST", *HYBRID_SEQUENCE_MODELS):
         return _evaluate_sequence_model(prepared, config, model_name, folds, reporter=reporter)
     raise ValueError(f"Unsupported model: {model_name}")
 
@@ -758,7 +759,7 @@ def _build_sequence_train_eval_datasets(
     eval_samples: pd.DataFrame,
 ):
     scaler = prepared.fit_sequence_scaler(train_samples)
-    if model_name != "GRUHybrid":
+    if model_name not in HYBRID_SEQUENCE_MODELS:
         train_ds = prepared.build_sequence_dataset(train_samples, scaler, include_country=config.use_country_features)
         eval_ds = prepared.build_sequence_dataset(eval_samples, scaler, include_country=config.use_country_features)
         return scaler, train_ds, eval_ds
@@ -1461,6 +1462,8 @@ def _evaluate_sequence_model(
                 patience=config.sequence_patience,
                 loss_name=config.sequence_loss,
                 focal_gamma=config.focal_gamma,
+                aux_target=config.sequence_aux_target,
+                aux_weight=config.sequence_aux_weight,
                 reporter=reporter,
                 progress_prefix=(config.name, model_name, fold.name),
             )
@@ -1508,6 +1511,8 @@ def _evaluate_sequence_model(
         "learning_rate": config.sequence_learning_rate,
         "loss_name": config.sequence_loss,
         "focal_gamma": config.focal_gamma,
+        "aux_target": config.sequence_aux_target,
+        "aux_weight": config.sequence_aux_weight,
     }
     return chosen, metrics_rows, prediction_frames
 
@@ -1702,6 +1707,8 @@ def _fit_and_score_final_model(
             epochs=chosen["epochs"],
             loss_name=chosen.get("loss_name", "bce"),
             focal_gamma=chosen.get("focal_gamma", 2.0),
+            aux_target=chosen.get("aux_target"),
+            aux_weight=chosen.get("aux_weight", 0.2),
             reporter=reporter,
             progress_prefix=(config.name, model_name, "Final"),
         )

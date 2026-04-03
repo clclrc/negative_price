@@ -441,6 +441,178 @@ if HAS_TORCH:
             return self.classifier(features).squeeze(1)
 
 
+    class TemporalAttentionPooling(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(self, hidden_size: int) -> None:
+            super().__init__()
+            self.score = nn.Linear(hidden_size, 1)
+
+        def forward(self, sequence_states: torch.Tensor) -> torch.Tensor:
+            weights = torch.softmax(self.score(sequence_states).squeeze(-1), dim=1)
+            return torch.sum(sequence_states * weights.unsqueeze(-1), dim=1)
+
+
+    class GRUHybridAttnClassifier(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            tabular_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__()
+            if tabular_dim <= 0:
+                raise ValueError("GRUHybridAttnClassifier requires tabular_dim > 0.")
+            self.use_country_embedding = use_country_embedding
+            self.gru = nn.GRU(
+                input_size=input_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+            )
+            self.attention_pool = TemporalAttentionPooling(hidden_size)
+            if use_country_embedding:
+                self.country_embedding = nn.Embedding(num_countries, embedding_dim)
+                sequence_dim = hidden_size + embedding_dim
+            else:
+                self.country_embedding = None
+                sequence_dim = hidden_size
+            self.tabular_encoder = nn.Sequential(
+                nn.Linear(tabular_dim, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+            )
+            self.classifier = nn.Sequential(
+                nn.Linear(sequence_dim + 64, 64),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1),
+            )
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if tabular_x is None:
+                raise ValueError("GRUHybridAttnClassifier requires tabular_x.")
+            sequence_states, _ = self.gru(x)
+            sequence_features = self.attention_pool(sequence_states)
+            if self.use_country_embedding:
+                embedded = self.country_embedding(country_idx)
+                sequence_features = torch.cat([sequence_features, embedded], dim=1)
+            tabular_features = self.tabular_encoder(tabular_x)
+            features = torch.cat([sequence_features, tabular_features], dim=1)
+            return self.classifier(features).squeeze(1)
+
+
+    class GRUHybridGatedClassifier(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            tabular_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__()
+            if tabular_dim <= 0:
+                raise ValueError("GRUHybridGatedClassifier requires tabular_dim > 0.")
+            self.use_country_embedding = use_country_embedding
+            self.gru = nn.GRU(
+                input_size=input_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+            )
+            if use_country_embedding:
+                self.country_embedding = nn.Embedding(num_countries, embedding_dim)
+                sequence_dim = hidden_size + embedding_dim
+            else:
+                self.country_embedding = None
+                sequence_dim = hidden_size
+            self.sequence_projection = nn.Sequential(
+                nn.Linear(sequence_dim, 64),
+                nn.ReLU(),
+            )
+            self.tabular_encoder = nn.Sequential(
+                nn.Linear(tabular_dim, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+            )
+            self.fusion_gate = nn.Sequential(
+                nn.Linear(sequence_dim + 64, 64),
+                nn.Sigmoid(),
+            )
+            self.classifier = nn.Sequential(
+                nn.Linear(64, 64),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1),
+            )
+
+        def fused_features(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor,
+        ) -> torch.Tensor:
+            _, hidden = self.gru(x)
+            sequence_features = hidden[-1]
+            if self.use_country_embedding:
+                embedded = self.country_embedding(country_idx)
+                sequence_features = torch.cat([sequence_features, embedded], dim=1)
+            tabular_features = self.tabular_encoder(tabular_x)
+            projected_sequence = self.sequence_projection(sequence_features)
+            gate = self.fusion_gate(torch.cat([sequence_features, tabular_features], dim=1))
+            return gate * projected_sequence + (1.0 - gate) * tabular_features
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if tabular_x is None:
+                raise ValueError("GRUHybridGatedClassifier requires tabular_x.")
+            fused = self.fused_features(x, country_idx, tabular_x)
+            return self.classifier(fused).squeeze(1)
+
+
+    class GRUHybridGatedMultiTaskClassifier(GRUHybridGatedClassifier):  # pragma: no cover - exercised through integration tests
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.aux_head = nn.Linear(64, 1)
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+        ) -> tuple[torch.Tensor, torch.Tensor]:
+            if tabular_x is None:
+                raise ValueError("GRUHybridGatedMultiTaskClassifier requires tabular_x.")
+            fused = self.fused_features(x, country_idx, tabular_x)
+            logits = self.classifier(fused).squeeze(1)
+            aux = self.aux_head(fused).squeeze(1)
+            return logits, aux
+
+
     class TemporalBlock(nn.Module):  # pragma: no cover - exercised through integration tests
         def __init__(self, in_channels: int, out_channels: int, kernel_size: int, dilation: int, dropout: float) -> None:
             super().__init__()
@@ -619,6 +791,27 @@ def build_sequence_model(
             use_country_embedding=use_country_embedding,
             num_countries=num_countries,
         )
+    if model_name == "GRUHybridAttn":
+        return GRUHybridAttnClassifier(
+            input_dim=input_dim,
+            tabular_dim=tabular_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GRUHybridGated":
+        return GRUHybridGatedClassifier(
+            input_dim=input_dim,
+            tabular_dim=tabular_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GRUHybridGatedMultiTask":
+        return GRUHybridGatedMultiTaskClassifier(
+            input_dim=input_dim,
+            tabular_dim=tabular_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
     if model_name == "TCN":
         return TCNClassifier(
             input_dim=input_dim,
@@ -672,11 +865,22 @@ def _configure_torch_cpu_threads(device: "torch.device") -> None:
     torch.set_num_threads(get_cpu_worker_count(max_workers=8))
 
 
-def _forward_model(model: nn.Module, batch: dict[str, torch.Tensor], device: "torch.device") -> torch.Tensor:
+def _split_model_outputs(output):
+    if isinstance(output, tuple):
+        return output[0], output[1]
+    return output, None
+
+
+def _forward_model_outputs(model: nn.Module, batch: dict[str, torch.Tensor], device: "torch.device") -> tuple["torch.Tensor", "torch.Tensor | None"]:
     tabular_x = batch.get("tabular_x")
     if tabular_x is None:
-        return model(batch["x"].to(device), batch["country_idx"].to(device))
-    return model(batch["x"].to(device), batch["country_idx"].to(device), tabular_x.to(device))
+        return _split_model_outputs(model(batch["x"].to(device), batch["country_idx"].to(device)))
+    return _split_model_outputs(model(batch["x"].to(device), batch["country_idx"].to(device), tabular_x.to(device)))
+
+
+def _forward_model(model: nn.Module, batch: dict[str, torch.Tensor], device: "torch.device") -> "torch.Tensor":
+    logits, _ = _forward_model_outputs(model, batch, device)
+    return logits
 
 
 def _predict_with_model(model: nn.Module, dataset) -> np.ndarray:
@@ -689,7 +893,7 @@ def _predict_with_model(model: nn.Module, dataset) -> np.ndarray:
     probs: list[np.ndarray] = []
     with torch.no_grad():
         for batch in loader:
-            logits = _forward_model(model, batch, device)
+            logits, _ = _forward_model_outputs(model, batch, device)
             probs.append(torch.sigmoid(logits).cpu().numpy())
     if not probs:
         return np.empty(0, dtype=np.float32)
@@ -709,6 +913,8 @@ def train_sequence_model(
     patience: int,
     loss_name: str = "bce",
     focal_gamma: float = 2.0,
+    aux_target: str | None = None,
+    aux_weight: float = 0.2,
     init_state_dict: dict[str, object] | None = None,
     reporter: ProgressReporter | None = None,
     progress_prefix: tuple[str, ...] = (),
@@ -738,6 +944,7 @@ def train_sequence_model(
             f"sequence training start | model={model_name} | device={device.type} "
             f"| train_samples={len(train_dataset)} | val_samples={len(val_dataset)} "
             f"| batches={len(train_loader)} | max_epochs={max_epochs} | loss={loss_name}"
+            f"{f' | aux_target={aux_target} | aux_weight={aux_weight:.2f}' if aux_target else ''}"
         ),
     )
 
@@ -751,6 +958,17 @@ def train_sequence_model(
         loss_fn = BinaryFocalLossWithLogits(gamma=focal_gamma, pos_weight=pos_weight)
     else:
         raise ValueError(f"Unsupported sequence loss: {loss_name}")
+    aux_loss_fn = nn.SmoothL1Loss() if aux_target else None
+    aux_mean = 0.0
+    aux_scale = 1.0
+    if aux_target == "target_price":
+        aux_values = train_dataset.metadata["target_price"].to_numpy(dtype=np.float32)
+        aux_mean = float(np.nanmean(aux_values))
+        aux_scale = float(np.nanstd(aux_values))
+        if aux_scale == 0.0 or np.isnan(aux_scale):
+            aux_scale = 1.0
+    elif aux_target is not None:
+        raise ValueError(f"Unsupported sequence auxiliary target: {aux_target}")
 
     best_score = float("-inf")
     best_epoch = 1
@@ -761,11 +979,19 @@ def train_sequence_model(
         epoch_started_at = reporter.now()
         model.train()
         epoch_loss_sum = 0.0
+        epoch_aux_loss_sum = 0.0
         epoch_sample_count = 0
         for batch in train_loader:
             optimizer.zero_grad()
-            logits = _forward_model(model, batch, device)
+            logits, aux_pred = _forward_model_outputs(model, batch, device)
             loss = loss_fn(logits, batch["y"].to(device))
+            if aux_loss_fn is not None:
+                if aux_pred is None or "aux_y" not in batch:
+                    raise ValueError("Auxiliary training requires both auxiliary model output and batch aux_y values.")
+                aux_target_tensor = (batch["aux_y"].to(device) - aux_mean) / aux_scale
+                aux_loss = aux_loss_fn(aux_pred, aux_target_tensor)
+                loss = loss + (aux_weight * aux_loss)
+                epoch_aux_loss_sum += float(aux_loss.item()) * int(batch["y"].shape[0])
             loss.backward()
             optimizer.step()
             batch_size = int(batch["y"].shape[0])
@@ -790,6 +1016,7 @@ def train_sequence_model(
             progress_prefix,
             (
                 f"epoch {epoch}/{max_epochs} | train_loss={epoch_loss_sum / max(epoch_sample_count, 1):.4f} "
+                f"{f'| aux_loss={epoch_aux_loss_sum / max(epoch_sample_count, 1):.4f} ' if aux_loss_fn is not None else ''}"
                 f"| val_pr_auc={format_metric(score)} | best_epoch={best_epoch} "
                 f"| best_pr_auc={format_metric(best_score_display)} "
                 f"| epoch={format_duration(epoch_elapsed)} | elapsed={format_duration(total_elapsed)} "
@@ -831,6 +1058,8 @@ def fit_sequence_final(
     epochs: int,
     loss_name: str = "bce",
     focal_gamma: float = 2.0,
+    aux_target: str | None = None,
+    aux_weight: float = 0.2,
     init_state_dict: dict[str, object] | None = None,
     reporter: ProgressReporter | None = None,
     progress_prefix: tuple[str, ...] = (),
@@ -859,6 +1088,7 @@ def fit_sequence_final(
             f"final training start | model={model_name} | device={device.type} "
             f"| train_samples={len(train_dataset)} | batches={len(train_loader)} "
             f"| epochs={max(epochs, 1)} | loss={loss_name}"
+            f"{f' | aux_target={aux_target} | aux_weight={aux_weight:.2f}' if aux_target else ''}"
         ),
     )
 
@@ -872,17 +1102,36 @@ def fit_sequence_final(
         loss_fn = BinaryFocalLossWithLogits(gamma=focal_gamma, pos_weight=pos_weight)
     else:
         raise ValueError(f"Unsupported sequence loss: {loss_name}")
+    aux_loss_fn = nn.SmoothL1Loss() if aux_target else None
+    aux_mean = 0.0
+    aux_scale = 1.0
+    if aux_target == "target_price":
+        aux_values = train_dataset.metadata["target_price"].to_numpy(dtype=np.float32)
+        aux_mean = float(np.nanmean(aux_values))
+        aux_scale = float(np.nanstd(aux_values))
+        if aux_scale == 0.0 or np.isnan(aux_scale):
+            aux_scale = 1.0
+    elif aux_target is not None:
+        raise ValueError(f"Unsupported sequence auxiliary target: {aux_target}")
 
     total_epochs = max(epochs, 1)
     for epoch in range(1, total_epochs + 1):
         epoch_started_at = reporter.now()
         model.train()
         epoch_loss_sum = 0.0
+        epoch_aux_loss_sum = 0.0
         epoch_sample_count = 0
         for batch in train_loader:
             optimizer.zero_grad()
-            logits = _forward_model(model, batch, device)
+            logits, aux_pred = _forward_model_outputs(model, batch, device)
             loss = loss_fn(logits, batch["y"].to(device))
+            if aux_loss_fn is not None:
+                if aux_pred is None or "aux_y" not in batch:
+                    raise ValueError("Auxiliary training requires both auxiliary model output and batch aux_y values.")
+                aux_target_tensor = (batch["aux_y"].to(device) - aux_mean) / aux_scale
+                aux_loss = aux_loss_fn(aux_pred, aux_target_tensor)
+                loss = loss + (aux_weight * aux_loss)
+                epoch_aux_loss_sum += float(aux_loss.item()) * int(batch["y"].shape[0])
             loss.backward()
             optimizer.step()
             batch_size = int(batch["y"].shape[0])
@@ -893,6 +1142,7 @@ def fit_sequence_final(
             progress_prefix,
             (
                 f"epoch {epoch}/{total_epochs} | train_loss={epoch_loss_sum / max(epoch_sample_count, 1):.4f} "
+                f"{f'| aux_loss={epoch_aux_loss_sum / max(epoch_sample_count, 1):.4f} ' if aux_loss_fn is not None else ''}"
                 f"| epoch={format_duration(epoch_elapsed)} "
                 f"| elapsed={format_duration(reporter.now() - train_started_at)} "
                 f"| speed={format_rate(epoch_sample_count, epoch_elapsed)} "

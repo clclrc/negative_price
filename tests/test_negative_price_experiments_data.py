@@ -222,3 +222,74 @@ class NegativePriceDataPrepTest(unittest.TestCase):
         missing_aware_targets = set(pd.to_datetime(missing_aware_prepared.sample_manifest["target_time"], utc=True))
         self.assertIn(utc_ts("2024-01-01 08:00:00"), missing_aware_targets)
         self.assertNotIn(utc_ts("2024-01-01 08:00:00"), strict_targets)
+
+    def test_mechanism_features_expand_tabular_bundle_and_manifest_keeps_target_price(self) -> None:
+        df = build_toy_frame(periods=18)
+        path = self.write_frame(df)
+        plain_config = ExperimentConfig(
+            name="PLAIN",
+            data_path=path,
+            countries=("AT",),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("GRUHybrid",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+        )
+        mechanism_config = ExperimentConfig(
+            name="MECH",
+            data_path=path,
+            countries=("AT",),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("GRUHybridGated",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+            use_mechanism_features=True,
+        )
+
+        plain_prepared = prepare_experiment_data(plain_config)
+        mechanism_prepared = prepare_experiment_data(mechanism_config)
+        samples = mechanism_prepared.sample_manifest.head(4).copy()
+
+        plain_bundle = plain_prepared.build_tabular_bundle(samples, include_country=True)
+        mechanism_bundle = mechanism_prepared.build_tabular_bundle(samples, include_country=True)
+
+        self.assertIn("target_price", mechanism_prepared.sample_manifest.columns)
+        self.assertGreater(mechanism_bundle.X.shape[1], plain_bundle.X.shape[1])
+
+    def test_sequence_dataset_exposes_auxiliary_target_when_requested(self) -> None:
+        df = build_toy_frame(periods=18)
+        path = self.write_frame(df)
+        config = ExperimentConfig(
+            name="MULTITASK",
+            data_path=path,
+            countries=("AT",),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("GRUHybridGatedMultiTask",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+            sequence_aux_target="target_price",
+            use_mechanism_features=True,
+        )
+
+        prepared = prepare_experiment_data(config)
+        samples = prepared.sample_manifest.head(3).copy()
+        scaler = prepared.fit_sequence_scaler(samples)
+        bundle = prepared.build_tabular_bundle(samples, include_country=True)
+        sequence_ds = prepared.build_sequence_dataset(samples, scaler, include_country=True, tabular_values=bundle.X)
+
+        item = sequence_ds[0]
+
+        self.assertIn("aux_y", item)
+        self.assertIn("tabular_x", item)

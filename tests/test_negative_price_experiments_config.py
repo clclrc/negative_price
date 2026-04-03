@@ -156,3 +156,28 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E26"].countries, configs["E23"].countries)
         self.assertEqual(configs["E27"].countries, configs["E23"].countries)
         self.assertEqual(configs["E28"].countries, configs["E24"].countries)
+
+    def test_default_configs_include_next_generation_hybrid_experiments(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E29", "E30", "E31", "E32"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E29"].models, ("GRUHybridAttn",))
+        self.assertEqual(configs["E30"].models, ("GRUHybridGated",))
+        self.assertEqual(configs["E31"].models, ("GRUHybridGated",))
+        self.assertEqual(configs["E32"].models, ("GRUHybridGatedMultiTask",))
+
+        for name in ("E29", "E30", "E31", "E32"):
+            self.assertEqual(configs[name].sequence_max_epochs, 60)
+            self.assertEqual(configs[name].sequence_patience, 10)
+            self.assertEqual(configs[name].countries, configs["E23"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+
+        self.assertFalse(configs["E29"].use_mechanism_features)
+        self.assertFalse(configs["E30"].use_mechanism_features)
+        self.assertTrue(configs["E31"].use_mechanism_features)
+        self.assertTrue(configs["E32"].use_mechanism_features)
+        self.assertIsNone(configs["E31"].sequence_aux_target)
+        self.assertEqual(configs["E32"].sequence_aux_target, "target_price")
+        self.assertEqual(configs["E32"].sequence_aux_weight, 0.2)

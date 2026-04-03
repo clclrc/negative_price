@@ -13,6 +13,7 @@ from .runtime import get_parallel_worker_count
 MASK_SUFFIX = "__missing"
 TABULAR_LAG_STEPS = (0, 1, 6, 24)
 TABULAR_WINDOW_STEPS = (6, 24, 72)
+MECHANISM_RAMP_STEPS = (6, 24)
 
 
 @dataclass(frozen=True)
@@ -110,7 +111,7 @@ class SequenceDataset:
         x_context = panel.context_values[window_slice].astype(np.float32)
         x = np.concatenate([x_numeric, x_mask, x_context], axis=1).astype(np.float32)
         country_idx = self.prepared.country_to_index.get(row["country"], -1) if self.include_country else -1
-        return {
+        item = {
             "x": x,
             "country_idx": np.int64(country_idx),
             "y": np.float32(row["y_true"]),
@@ -119,6 +120,9 @@ class SequenceDataset:
             if self.tabular_values is not None
             else {}
         )
+        if self.prepared.config.sequence_aux_target == "target_price":
+            item["aux_y"] = np.float32(row["target_price"])
+        return item
 
     @property
     def metadata(self) -> pd.DataFrame:
@@ -213,6 +217,29 @@ class PreparedExperimentData:
             mask_name = f"{feature}{MASK_SUFFIX}"
             for window in TABULAR_WINDOW_STEPS:
                 feature_names.append(f"{mask_name}__mean_{window}")
+
+        if self.config.use_mechanism_features:
+            for feature in ("load", "temp_2m_c", "wind_speed_10m_ms", "shortwave_radiation_wm2"):
+                if feature not in self.numeric_features:
+                    continue
+                for step in MECHANISM_RAMP_STEPS:
+                    continuous_indices.append(len(feature_names))
+                    feature_names.append(f"{feature}__ramp_{step}")
+                continuous_indices.append(len(feature_names))
+                feature_names.append(f"{feature}__anomaly_24")
+            if "price" in self.numeric_features:
+                for window in (24, 72):
+                    continuous_indices.append(len(feature_names))
+                    feature_names.append(f"price__drawdown_{window}")
+            feature_names.extend(
+                (
+                    "is_night_utc",
+                    "is_weekend_local__x_night_utc",
+                    "is_holiday_local__x_night_utc",
+                    "is_weekend_local__x_low_load_24",
+                    "is_holiday_local__x_low_load_24",
+                )
+            )
 
         feature_names.extend(self.context_feature_names)
         if include_country:
@@ -347,6 +374,9 @@ def _build_tabular_row_values(
             start = max(len(series) - window, 0)
             values.append(float(series[start:].mean()))
 
+    if prepared.config.use_mechanism_features:
+        values.extend(_build_mechanism_feature_values(prepared, row, numeric_window, context_last))
+
     values.extend(float(item) for item in context_last.tolist())
     if include_country:
         for country in prepared.config.countries:
@@ -379,6 +409,7 @@ def _build_sample_manifest_for_country(
     anchors = anchors[keep]
     target_indices = target_indices[keep]
     labels = (panel.original_price[target_indices] < 0).astype(np.int8)
+    target_price = panel.original_price[target_indices].astype(np.float32)
 
     return pd.DataFrame(
         {
@@ -388,6 +419,81 @@ def _build_sample_manifest_for_country(
             "anchor_time": panel.times[anchors],
             "target_time": panel.times[target_indices],
             "y_true": labels,
+            "target_price": target_price,
             "horizon_hours": config.horizon_hours,
         }
     )
+
+
+def _safe_recent_slice(series: np.ndarray, window: int) -> np.ndarray:
+    start = max(len(series) - window, 0)
+    return series[start:]
+
+
+def _safe_stat(values: np.ndarray, reducer, default: float = 0.0) -> float:
+    if values.size == 0 or np.isnan(values).all():
+        return float(default)
+    return float(np.nan_to_num(reducer(values), nan=default, posinf=default, neginf=default))
+
+
+def _current_minus_lag(series: np.ndarray, step: int) -> float:
+    if series.size == 0 or np.isnan(series[-1]):
+        return 0.0
+    lag_index = max(len(series) - 1 - step, 0)
+    current = float(np.nan_to_num(series[-1], nan=0.0))
+    lagged = float(np.nan_to_num(series[lag_index], nan=0.0))
+    return current - lagged
+
+
+def _recover_hour_from_context(context_last: np.ndarray, prepared: PreparedExperimentData) -> float:
+    sin_idx = prepared.context_feature_names.index("sin_hour")
+    cos_idx = prepared.context_feature_names.index("cos_hour")
+    angle = np.arctan2(float(context_last[sin_idx]), float(context_last[cos_idx]))
+    if angle < 0:
+        angle += 2 * np.pi
+    return float(angle * 24.0 / (2 * np.pi))
+
+
+def _build_mechanism_feature_values(
+    prepared: PreparedExperimentData,
+    row,
+    numeric_window: np.ndarray,
+    context_last: np.ndarray,
+) -> list[float]:
+    values: list[float] = []
+    feature_to_idx = {feature: idx for idx, feature in enumerate(prepared.numeric_features)}
+
+    for feature in ("load", "temp_2m_c", "wind_speed_10m_ms", "shortwave_radiation_wm2"):
+        if feature not in feature_to_idx:
+            continue
+        series = numeric_window[:, feature_to_idx[feature]]
+        for step in MECHANISM_RAMP_STEPS:
+            values.append(_current_minus_lag(series, step))
+        values.append(float(np.nan_to_num(series[-1], nan=0.0) - _safe_stat(_safe_recent_slice(series, 24), np.nanmean)))
+
+    if "price" in feature_to_idx:
+        price_series = numeric_window[:, feature_to_idx["price"]]
+        current_price = float(np.nan_to_num(price_series[-1], nan=0.0))
+        for window in (24, 72):
+            recent_min = _safe_stat(_safe_recent_slice(price_series, window), np.nanmin)
+            values.append(current_price - recent_min)
+
+    hour = _recover_hour_from_context(context_last, prepared)
+    is_night = 1.0 if hour >= 22.0 or hour < 6.0 else 0.0
+    weekend = float(context_last[prepared.context_feature_names.index("is_weekend_local")])
+    holiday = float(context_last[prepared.context_feature_names.index("is_holiday_local")])
+    low_load = 0.0
+    if "load" in feature_to_idx:
+        load_series = numeric_window[:, feature_to_idx["load"]]
+        low_load = 1.0 if float(np.nan_to_num(load_series[-1], nan=0.0)) <= _safe_stat(_safe_recent_slice(load_series, 24), np.nanmean) else 0.0
+
+    values.extend(
+        (
+            is_night,
+            weekend * is_night,
+            holiday * is_night,
+            weekend * low_load,
+            holiday * low_load,
+        )
+    )
+    return values

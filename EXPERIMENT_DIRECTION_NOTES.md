@@ -337,5 +337,72 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 ### If richer-feature experiments fail to improve
 - Revisit training stability, sequence data pipeline efficiency, and model calibration before expanding architecture complexity
 
+## Prepared follow-on model experiments after `E25-E28`
+
+- `E29`: `GRUHybridAttn` on the same `20-country + public + h=6 + window=168` setup
+- `E30`: `GRUHybridGated` on the same setup
+- `E31`: `GRUHybridGated` plus mechanism-aware engineered tabular features on the same setup
+- `E32`: `GRUHybridGatedMultiTask` plus mechanism-aware features and an auxiliary future-price target on the same setup
+
+### Why these were chosen
+
+- `E29` changes only the sequence pooling rule, which is the cleanest way to test whether the current `168h` window contains useful information outside the final hidden state
+- `E30` changes only the fusion rule, which directly tests whether the project should keep using simple concatenation between sequence and handcrafted features
+- `E31` adds mechanism-facing summary variables without changing the main event-prediction framing
+- `E32` borrows signal from future-price forecasting as an auxiliary task while keeping future negative-price event prediction as the main output
+
+### Implementation note
+
+- `E29-E32` are now implemented as config defaults in the repository
+- They should still be prioritized only after the current `E25-E28` batch has been interpreted
+
+## Literature-informed addendum
+
+For a fuller write-up, see `LITERATURE_EXPERIMENT_GUIDE.md`.
+
+### Main judgment from the literature review
+
+- Direct future negative-price event prediction remains much less common than ordinary electricity price regression
+- The strongest related work usually falls into one of four buckets:
+  driver analysis with `logit` models,
+  threshold-event classification,
+  price or distribution forecasting,
+  and generic deep-learning price prediction
+- This strengthens the case that the repository should keep its main contribution centered on leakage-free future event classification rather than drifting toward regression-only work
+
+### What the literature says to prioritize next
+
+- Keep strong simple baselines, especially interpretable probabilistic baselines and the best tree models
+- Keep `E23` as the main deep-learning score target unless a clearly better family appears under equally rigorous evaluation
+- Add probability calibration and probability-quality evaluation as a first-class follow-up direction
+- Prefer new experiment families that improve task design and mechanism alignment:
+  multi-horizon event prediction,
+  future-window event labels,
+  mechanism-aware causal summary features,
+  and event-plus-price multi-task learning
+- Treat transfer and market generalization as a high-value later-stage contribution because the multi-market setup is one of the project's strongest differentiators
+
+### What the literature says not to prioritize
+
+- Do not switch the mainline to a transformer-first strategy without stronger evidence
+- Do not reopen the current flow-heavy branch before improving missing-data handling and matched-sample comparison quality
+- Do not replace the event-classification framing with plain price regression
+- Do not over-interpret score differences across country subsets with different data coverage
+
+### Updated recommended order after `E25-E27`
+
+1. Probability calibration on the strongest current classifier
+2. Multi-horizon event prediction with shared versus separate heads
+3. Future-window event labels that remain strictly causal
+4. Mechanism-aware hybrid features such as residual-load and ramp proxies
+5. Multi-task event plus price prediction
+6. Stronger transfer and market-generalization tests
+
+### Why this addendum matters
+
+- The recent literature does not invalidate the current `GRUHybrid` roadmap
+- Instead, it suggests that the highest-value next gains are more likely to come from probability quality, label design, and mechanism-aligned feature construction than from backbone churn
+- This aligns with the strongest empirical signals already observed in this repository
+
 ## Maintenance rule
 - Whenever a materially new direction judgment is made, update this file so later threads can see the latest recommended roadmap.
