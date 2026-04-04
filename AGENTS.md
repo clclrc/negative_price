@@ -92,6 +92,15 @@ If a future conversation produces a materially updated view on:
 
 then synchronize that new judgment into `EXPERIMENT_DIRECTION_NOTES.md` so other threads can reuse the latest roadmap.
 
+## Experiment planning workflow
+For newly proposed experiment families, keep the workflow in this order by default:
+
+1. write down the experiment design and comparison logic first,
+2. confirm the plan against the latest completed results,
+3. only then implement the new experiment IDs in code.
+
+Do not preemptively implement a new experiment family before its design has been written down, unless the user explicitly asks to skip the design-first step.
+
 ## Experiment launch convention
 For future training-script launch commands, use the following shell format by default:
 

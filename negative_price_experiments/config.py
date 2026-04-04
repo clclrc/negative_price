@@ -159,6 +159,9 @@ class ExperimentConfig:
     allow_window_missing: bool = False
     repeat_random_seeds: tuple[int, ...] = ()
     use_mechanism_features: bool = False
+    meta_kind: str | None = None
+    meta_members: tuple[str, ...] = ()
+    meta_calibration_method: str = "sigmoid"
 
     @property
     def numeric_features(self) -> tuple[str, ...]:
@@ -601,6 +604,56 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             sequence_aux_target="target_price",
             sequence_aux_weight=0.2,
             use_mechanism_features=True,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E33": ExperimentConfig(
+            name="E33",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybridGated",),
+            sequence_max_epochs=60,
+            sequence_patience=10,
+            random_seed=42,
+            repeat_random_seeds=(42, 52, 62),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours", "random_seed"}},
+        ),
+        "E34": ExperimentConfig(
+            name="E34",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUHybridGated",),
+            sequence_max_epochs=60,
+            sequence_patience=10,
+            use_mechanism_features=True,
+            random_seed=42,
+            repeat_random_seeds=(42, 52, 62),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours", "random_seed"}},
+        ),
+        "E35": ExperimentConfig(
+            name="E35",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=(),
+            meta_kind="late_fusion",
+            meta_members=("E30", "E31"),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E36": ExperimentConfig(
+            name="E36",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=(),
+            meta_kind="calibration",
+            meta_members=("E30", "E31", "E35"),
+            meta_calibration_method="sigmoid",
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
         ),
     }

@@ -8,16 +8,17 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 ## Current status
 
 ### Best current deep-learning baseline
-- `E23`: `GRUHybrid`, `window=168`, `h=6`, `20-market`, `public features`
+- `E30`: `GRUHybridGated`, `window=168`, `h=6`, `20-market`, `public features`
 - Current role:
   best-performing deep-learning configuration under the main forecasting setup
 
 ### High-level conclusion so far
 - Longer history helps `GRU`
-- `GRUHybrid` is now the most promising deep-learning line under the main setup
+- `GRUHybridGated` is now the most promising deep-learning line under the main setup
+- `E31` is the strongest precision- and `F1`-oriented companion branch under the same full setup
 - Pure `GRU` currently looks more promising than `TCN` and clearly more promising than the current `PatchTST`
 - Deep learning still underperforms the strongest tree-model baselines
-- The most defensible next step is now to continue from `E23` rather than reopening older backbone questions
+- The most defensible next step is now to continue from `E30/E31` rather than reopening older backbone questions
 
 ## Observed signals from completed experiments
 
@@ -91,6 +92,20 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E21` and `E22B` provide supporting evidence that the hybrid gain is both stable and mechanism-aligned
 - `E24` should remain exploratory until it can outperform `E23`
 - The next round should optimize and stress-test the `E23` line rather than broadening the feature space again
+
+### Signal group 7: full-setup stress test and next-generation hybrid variants (`E25-E31`)
+- `E25` showed that the `E23` line has meaningful seed sensitivity: the repeated-seed mean test `PR-AUC` is lower than the single-run `E23` score, even though the mean `F1` is slightly higher
+- `E26` underperformed `E23` on the main metric, so focal loss still does not look like the best way to improve the full-setup hybrid line
+- `E27` slightly improved over `E23`, which suggests training budget matters, but only modestly
+- `E29` improved over `E23`, so temporal attention pooling is a real positive direction, but it did not become the strongest line
+- `E30` is the strongest completed result so far under the full `20-country + public + h=6` setup, outperforming `E23` on `PR-AUC`, `ROC-AUC`, `recall`, `F1`, and balanced accuracy
+- `E31` also outperformed `E23`, with the strongest completed `precision` and `F1`, although its recall and balanced accuracy are below `E30`
+- `E28` and `E32` are still running or incomplete, so no roadmap change should depend on them yet
+
+#### Direction implication
+- `E30` should replace `E23` as the main deep-learning benchmark for the full setup
+- `E31` should be kept as a serious parallel branch because it appears complementary rather than redundant
+- The immediate next round should focus on validating `E30` and `E31`, not reopening focal loss or older pure-`GRU` questions
 
 ## Direction assessment
 
@@ -321,40 +336,38 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Hybrid is no longer just a justification question; it is the strongest current next-step line
 - Missingness-aware `20-country` renewables remains exploratory rather than decisive
 
-## Next planned experiments around `E23`
+## Current completed-round judgment after `E25-E27` and `E29-E31`
 
-- `E25`: repeated-seed version of `E23`
-- `E26`: `E23` plus focal loss to test whether the hybrid mainline responds better than the earlier pure-`GRU` line did
-- `E27`: `E23` plus a larger sequence training budget, such as more epochs and a longer early-stopping patience
-- `E28`: only if `E25-E27` are positive, revisit a `20-country` renewables-aware hybrid line with improved missing-data handling
+- `E30` is the strongest completed full-setup deep-learning result and should now be treated as the main score target
+- `E31` is close enough to `E30`, and different enough in `precision` versus `recall`, that it should remain an active companion branch
+- `E25` shows the old `E23` line was not stable enough to treat a single run as fully representative
+- `E26` should not be prioritized further
+- `E28` and `E32` are still pending, so they should not yet drive roadmap decisions
+
+## Next planned experiments around `E30` and `E31`
+
+- `E33`: repeated-seed version of `E30`
+- `E34`: repeated-seed version of `E31`
+- `E35`: validation-weighted late-fusion ensemble of `E30` and `E31`
+- `E36`: probability calibration branch on the strongest available completed classifier among `E30`, `E31`, and `E35`
 
 ### Why this is the right next plan
-- `E23` is now the main score target for deep learning
-- `E25` answers whether the full-setup hybrid gain is stable
-- `E26` and `E27` test the two most defensible levers on the same architecture before introducing additional feature-space complexity
-- `E28` is deliberately conditional because `E24` has already shown that simply adding renewables back into the full setup is not enough
+- `E30` is the new main score target for deep learning, so it needs a proper stability check before more architectural churn
+- `E31` may be complementary rather than weaker, because it trades some recall for noticeably higher precision and `F1`
+- `E35` is justified because `E30` and `E31` show different error profiles under the same setup
+- `E36` is justified by both the literature and the current score profile: once the strongest classifier family is identified, probability quality becomes the next high-value question
 
-### If richer-feature experiments fail to improve
-- Revisit training stability, sequence data pipeline efficiency, and model calibration before expanding architecture complexity
-
-## Prepared follow-on model experiments after `E25-E28`
-
-- `E29`: `GRUHybridAttn` on the same `20-country + public + h=6 + window=168` setup
-- `E30`: `GRUHybridGated` on the same setup
-- `E31`: `GRUHybridGated` plus mechanism-aware engineered tabular features on the same setup
-- `E32`: `GRUHybridGatedMultiTask` plus mechanism-aware features and an auxiliary future-price target on the same setup
-
-### Why these were chosen
-
-- `E29` changes only the sequence pooling rule, which is the cleanest way to test whether the current `168h` window contains useful information outside the final hidden state
-- `E30` changes only the fusion rule, which directly tests whether the project should keep using simple concatenation between sequence and handcrafted features
-- `E31` adds mechanism-facing summary variables without changing the main event-prediction framing
-- `E32` borrows signal from future-price forecasting as an auxiliary task while keeping future negative-price event prediction as the main output
+### Planned roles
+- `E33` answers whether the `E30` gain is stable across seeds
+- `E34` answers whether the mechanism-aware `E31` gain is stable across seeds
+- `E35` answers whether the `E30` and `E31` branches are complementary enough to improve over either single model
+- `E36` answers whether the strongest current classifier can be made more decision-useful without sacrificing ranking quality
 
 ### Implementation note
 
-- `E29-E32` are now implemented as config defaults in the repository
-- They should still be prioritized only after the current `E25-E28` batch has been interpreted
+- `E29-E32` are already implemented as config defaults
+- `E33-E36` are now also implemented as config defaults
+- `E33-E36` should still be interpreted around completed `E30/E31` evidence unless `E32` later changes the ordering materially
 
 ## Literature-informed addendum
 

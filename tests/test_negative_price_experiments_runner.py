@@ -12,7 +12,15 @@ import pandas as pd
 
 from negative_price_experiments.config import AdaptBudget, ExperimentConfig, TimeRange, TransferConfig, WalkForwardFold, utc_ts
 from negative_price_experiments.models import HAS_TORCH, HAS_XGBOOST, TorchTrainingOutcome
-from negative_price_experiments.pipeline import run_experiment, run_transfer_experiment
+from negative_price_experiments.pipeline import (
+    _build_meta_prediction_frame,
+    _merge_member_prediction_frames,
+    _meta_metric_score,
+    _normalize_member_weights,
+    _weighted_member_probability,
+    run_experiment,
+    run_transfer_experiment,
+)
 
 
 def build_runner_frame() -> pd.DataFrame:
@@ -76,6 +84,54 @@ def build_transfer_frame() -> pd.DataFrame:
 
 
 class NegativePriceRunnerTest(unittest.TestCase):
+    def test_meta_helper_functions_build_weighted_predictions(self) -> None:
+        member_a = pd.DataFrame(
+            {
+                "country": ["AT", "BE"],
+                "anchor_time": ["2024-01-01 00:00:00+00:00", "2024-01-01 01:00:00+00:00"],
+                "target_time": ["2024-01-01 01:00:00+00:00", "2024-01-01 02:00:00+00:00"],
+                "y_true": [0, 1],
+                "split": ["val", "val"],
+                "fold": ["F1", "F1"],
+                "y_prob": [0.2, 0.7],
+            }
+        )
+        member_b = member_a.copy()
+        member_b["y_prob"] = [0.4, 0.5]
+
+        merged = _merge_member_prediction_frames({"E30": member_a, "E31": member_b})
+        weights = _normalize_member_weights({"E30": 0.6, "E31": 0.4})
+        y_prob = _weighted_member_probability(merged, weights)
+
+        self.assertEqual(len(merged), 2)
+        np.testing.assert_allclose(y_prob, np.array([0.28, 0.62], dtype=np.float32), atol=1e-6)
+
+        frame = _build_meta_prediction_frame(
+            merged,
+            y_prob,
+            experiment="E35",
+            model="LateFusion",
+            split="val",
+            threshold=0.5,
+            candidate="E30+E31",
+            extra_columns={"fusion_strategy": "val_pr_auc_weighted"},
+        )
+        self.assertIn("fold", frame.columns)
+        self.assertIn("fusion_strategy", frame.columns)
+        self.assertEqual(frame["model"].iloc[0], "LateFusion")
+
+    def test_meta_metric_score_uses_raw_rows_when_seed_aggregation_present(self) -> None:
+        metrics = pd.DataFrame(
+            {
+                "split": ["val", "val", "val", "test"],
+                "pr_auc": [0.31, 0.29, 0.30, 0.28],
+                "seed_aggregation": ["raw", "raw", "mean", "raw"],
+            }
+        )
+
+        score = _meta_metric_score(metrics, split="val", metric="pr_auc")
+        self.assertAlmostEqual(score, 0.30)
+
     def test_smoke_run_writes_required_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -136,6 +192,79 @@ class NegativePriceRunnerTest(unittest.TestCase):
             self.assertIn("[SMOKE] experiment started", log_output)
             self.assertIn("[SMOKE][Majority][F1] fold 1/2 completed", log_output)
             self.assertIn("[SMOKE] experiment completed", log_output)
+
+    def test_meta_experiments_smoke_run_with_patched_member_configs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            common_kwargs = {
+                "data_path": data_path,
+                "countries": ("AT", "BE"),
+                "feature_group": "public",
+                "window_hours": 24,
+                "horizon_hours": 1,
+                "split_strategy": "unit",
+                "ffill_limit": 3,
+                "primary_metric": "pr_auc",
+                "random_seed": 42,
+            }
+            e30 = ExperimentConfig(name="E30", models=("Majority",), **common_kwargs)
+            e31 = ExperimentConfig(name="E31", models=("LogisticRegression",), **common_kwargs)
+            e35 = ExperimentConfig(
+                name="E35",
+                models=(),
+                meta_kind="late_fusion",
+                meta_members=("E30", "E31"),
+                **common_kwargs,
+            )
+            e36 = ExperimentConfig(
+                name="E36",
+                models=(),
+                meta_kind="calibration",
+                meta_members=("E30", "E31", "E35"),
+                meta_calibration_method="sigmoid",
+                **common_kwargs,
+            )
+            folds = (
+                WalkForwardFold(
+                    "F1",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-04 00:00:00")),
+                    TimeRange(utc_ts("2024-01-04 00:00:00"), utc_ts("2024-01-06 00:00:00")),
+                ),
+                WalkForwardFold(
+                    "F2",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-06 00:00:00")),
+                    TimeRange(utc_ts("2024-01-06 00:00:00"), utc_ts("2024-01-08 00:00:00")),
+                ),
+            )
+            config_map = {"E30": e30, "E31": e31, "E35": e35, "E36": e36}
+
+            with patch("negative_price_experiments.pipeline.build_default_experiment_configs", return_value=config_map):
+                e35_artifacts = run_experiment(
+                    e35,
+                    output_dir=out_dir,
+                    folds=folds,
+                    final_train_range=TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-07 00:00:00")),
+                    final_test_range=TimeRange(utc_ts("2024-01-07 00:00:00"), utc_ts("2024-01-08 12:00:00")),
+                )
+                e36_artifacts = run_experiment(
+                    e36,
+                    output_dir=out_dir,
+                    folds=folds,
+                    final_train_range=TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-07 00:00:00")),
+                    final_test_range=TimeRange(utc_ts("2024-01-07 00:00:00"), utc_ts("2024-01-08 12:00:00")),
+                )
+
+            e35_metrics = pd.read_csv(e35_artifacts["metrics_summary"])
+            e36_metrics = pd.read_csv(e36_artifacts["metrics_summary"])
+
+            self.assertTrue(Path(e35_artifacts["member_weights"]).exists())
+            self.assertTrue(Path(e36_artifacts["candidate_scores"]).exists())
+            self.assertIn("LateFusion", set(e35_metrics["model"]))
+            self.assertTrue(any(str(model).startswith("Calibrated") for model in set(e36_metrics["model"])))
 
     def test_skip_unavailable_models_keeps_tabular_run_alive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

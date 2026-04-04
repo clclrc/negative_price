@@ -181,3 +181,25 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertIsNone(configs["E31"].sequence_aux_target)
         self.assertEqual(configs["E32"].sequence_aux_target, "target_price")
         self.assertEqual(configs["E32"].sequence_aux_weight, 0.2)
+
+    def test_default_configs_include_e30_e31_follow_up_meta_experiments(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E33", "E34", "E35", "E36"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E33"].models, ("GRUHybridGated",))
+        self.assertEqual(configs["E34"].models, ("GRUHybridGated",))
+        self.assertEqual(configs["E33"].repeat_random_seeds, (42, 52, 62))
+        self.assertEqual(configs["E34"].repeat_random_seeds, (42, 52, 62))
+        self.assertFalse(configs["E33"].use_mechanism_features)
+        self.assertTrue(configs["E34"].use_mechanism_features)
+
+        self.assertEqual(configs["E35"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E35"].meta_members, ("E30", "E31"))
+        self.assertEqual(configs["E35"].models, ())
+
+        self.assertEqual(configs["E36"].meta_kind, "calibration")
+        self.assertEqual(configs["E36"].meta_members, ("E30", "E31", "E35"))
+        self.assertEqual(configs["E36"].meta_calibration_method, "sigmoid")
+        self.assertEqual(configs["E36"].models, ())

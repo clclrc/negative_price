@@ -281,48 +281,55 @@ The main test-set results are:
 
 Based on the completed `E11-E16` results, the current evidence supports the following conclusions:
 
-1. `E12` should remain the main deep-learning reference under the full `20-country + public + h = 6` setup.
+1. `E12` should remain the early main deep-learning reference under the full `20-country + public + h = 6` setup.
 2. `E14` is useful when higher recall is desired, but it does not replace `E12` under a `PR-AUC`-first selection rule.
 3. The renewables track is the most promising next direction for improving deep-learning performance.
 4. The current flow-feature track should be deprioritized unless missing-data handling or comparison quality is improved.
-5. A hybrid model that combines sequence representations with handcrafted features should be considered only after the richer-feature direction has been clarified more cleanly.
+5. A hybrid model that combines sequence representations with handcrafted features becomes justified only after the richer-feature direction is clarified more cleanly.
 
-Based on the completed `E17-E20` results, the updated evidence now supports the following refinement:
+Based on the completed `E17-E24` results, the updated evidence supports the following refinement:
 
-6. The renewables direction has been confirmed under a stricter matched-sample comparison.
-7. `E19` is now the strongest current development line on the renewables subset.
-8. `E18` confirms that the renewables benefit is stable but modest in magnitude.
-9. `E20` improves coverage and recall, but it does not yet outperform the full `20-country` `E12` baseline on the main metric.
+6. The renewables direction is confirmed under a stricter matched-sample comparison.
+7. `E19` becomes the strongest renewables-subset development line.
+8. `E21` confirms that the hybrid gain is stable enough to justify continued investment.
+9. `E23` replaces `E12` as the main deep-learning benchmark under the full project setup.
+10. `E24` does not yet justify expanding the full mainline back to missingness-aware renewables.
 
-Based on the completed `E21-E24` results, the updated evidence now supports the following further refinement:
+Based on the completed `E25-E27` and `E29-E31` results, the evidence now supports the following further refinement:
 
-10. `E23` should replace `E12` as the main deep-learning benchmark under the full project setup.
-11. `E21` confirms that the hybrid gain is stable enough to justify continued investment.
-12. `E22B > E22A` shows that renewable features still help after moving to a hybrid architecture.
-13. `E24` does not yet justify expanding the full mainline back to missingness-aware renewables.
+11. `E25` shows that the old `E23` line has meaningful seed sensitivity, so single-run hybrid results should be treated with caution.
+12. `E26` does not justify further investment in focal loss under the full main setup.
+13. `E27` suggests that a larger training budget helps, but only modestly.
+14. `E29` confirms that temporal attention pooling is a positive direction, but it is not the strongest completed line.
+15. `E30` is now the strongest completed deep-learning model under the full `20-country + public + h = 6` setup.
+16. `E31` remains a serious companion branch because it gives stronger completed `precision` and `F1` than `E30`, even though `E30` is stronger on `PR-AUC`, `recall`, and balanced accuracy.
+17. `E28` and `E32` are still unfinished, so they should not yet change the roadmap.
 
 ## **Next experimental plan**
 
-The next round should now focus only on strengthening the `E23` line rather than broadening the feature space again.
+The next round should now focus on validating and exploiting the complementary strengths of `E30` and `E31`, rather than reopening older backbone choices.
 
-1. `E25`: repeated-seed version of `E23`.  
-   Goal: verify whether the `E23` gain over `E12` is stable across random seeds.
-2. `E26`: `E23` plus focal loss.  
-   Goal: test whether the current best hybrid mainline responds more favorably to imbalance-aware training than the earlier pure-`GRU` line did.
-3. `E27`: `E23` plus a larger training budget, such as more epochs and a longer early-stopping patience.  
-   Goal: test whether the current `E23` result is still optimization-limited.
-4. `E28`: only if `E25-E27` remain positive, revisit a `20-country`, renewables-aware hybrid line with improved missing-data handling.  
-   Goal: attempt a stronger full-setup renewables-hybrid branch only after the public-feature hybrid mainline has been thoroughly validated.
+1. `E33`: repeated-seed version of `E30`.  
+   Goal: verify whether the new main score target is stable across random seeds.
+2. `E34`: repeated-seed version of `E31`.  
+   Goal: verify whether the mechanism-aware branch is stable enough to remain a serious parallel line.
+3. `E35`: validation-weighted late-fusion ensemble of `E30` and `E31`.  
+   Goal: test whether the two strongest completed branches are complementary enough to beat either single model.
+4. `E36`: probability calibration branch built on the strongest available completed classifier among `E30`, `E31`, and `E35`.  
+   Goal: improve decision usefulness and probability quality without sacrificing ranking quality.
 
-### **Prepared follow-on experiments after `E25-E28`**
+### **Current implementation status**
 
-The repository now also includes a prepared next model-design branch around the same full benchmark:
+The repository already contains implemented config defaults for `E29-E32`, but the current round should still be interpreted as:
 
-1. `E29`: `GRUHybridAttn`.  
-   Goal: test whether temporal attention pooling over the `168h` window is better than using only the final `GRU` hidden state.
-2. `E30`: `GRUHybridGated`.  
-   Goal: test whether gated fusion between sequence and handcrafted tabular features is better than simple concatenation.
-3. `E31`: mechanism-aware `GRUHybridGated`.  
-   Goal: add engineered ramp, drawdown, anomaly, and calendar-interaction features without changing the main task definition.
-4. `E32`: multi-task mechanism-aware `GRUHybridGated`.  
-   Goal: keep future negative-price event probability as the main output while adding an auxiliary future-price target to improve representation learning.
+1. `E29-E31`: completed and informative.
+2. `E28`: still running or incomplete.
+3. `E32`: still running or incomplete.
+
+### **Workflow note for future rounds**
+
+For new experiment families after this point, the preferred order is:
+
+1. write down the design and comparison logic first,
+2. judge the design against the latest completed evidence,
+3. only then implement the new experiment IDs in code.

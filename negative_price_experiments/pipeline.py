@@ -15,6 +15,7 @@ from .config import (
     AdaptBudget,
     ExperimentConfig,
     TransferConfig,
+    build_default_experiment_configs,
 )
 from .data import TabularScaler, prepare_experiment_data
 from .metrics import add_month_column, compute_binary_metrics, find_best_threshold_f1, summarize_prediction_frame
@@ -81,6 +82,26 @@ def run_experiment(
     reporter: ProgressReporter | None = None,
 ) -> dict[str, Path]:
     output_path = Path(output_dir).resolve() / config.name
+    if config.meta_kind == "late_fusion":
+        return _run_late_fusion_experiment(
+            config,
+            output_path=output_path,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+    if config.meta_kind == "calibration":
+        return _run_calibration_experiment(
+            config,
+            output_path=output_path,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
     if config.repeat_random_seeds:
         return _run_repeated_seed_experiment(
             config,
@@ -235,6 +256,493 @@ def run_experiment(
         "predictions": output_path / "predictions.csv",
         "progress_log": progress_log,
     }
+
+
+def _resolve_meta_member_configs(config: ExperimentConfig) -> tuple[ExperimentConfig, ...]:
+    configs = build_default_experiment_configs(config.data_path)
+    missing = [name for name in config.meta_members if name not in configs]
+    if missing:
+        raise ValueError(f"Meta experiment {config.name} references unknown members: {missing}")
+    return tuple(configs[name] for name in config.meta_members)
+
+
+def _meta_metric_score(metrics: pd.DataFrame, *, split: str, metric: str) -> float:
+    if metrics.empty or metric not in metrics.columns:
+        return float("nan")
+    subset = metrics.loc[metrics["split"].astype(str) == split].copy()
+    if "seed_aggregation" in subset.columns:
+        subset = subset.loc[subset["seed_aggregation"].fillna("raw") == "raw"].copy()
+    values = pd.to_numeric(subset[metric], errors="coerce")
+    if values.empty:
+        return float("nan")
+    return float(values.mean())
+
+
+def _normalize_member_weights(raw_scores: dict[str, float]) -> dict[str, float]:
+    normalized: dict[str, float] = {}
+    valid = {
+        name: score
+        for name, score in raw_scores.items()
+        if np.isfinite(score) and score > 0.0
+    }
+    if not valid:
+        if not raw_scores:
+            return normalized
+        equal_weight = 1.0 / float(len(raw_scores))
+        return {name: equal_weight for name in raw_scores}
+    total = float(sum(valid.values()))
+    for name in raw_scores:
+        normalized[name] = float(valid.get(name, 0.0) / total)
+    return normalized
+
+
+def _member_weight_label(weights: dict[str, float]) -> str:
+    return ";".join(f"{name}:{weight:.4f}" for name, weight in weights.items())
+
+
+def _selected_artifact_candidate(artifacts: dict[str, Path]) -> str | None:
+    metrics = pd.read_csv(artifacts["metrics_summary"])
+    if metrics.empty or "candidate" not in metrics.columns:
+        return None
+    test_rows = metrics.loc[metrics["split"].astype(str) == "test"].copy()
+    if "seed_aggregation" in test_rows.columns:
+        test_rows = test_rows.loc[test_rows["seed_aggregation"].fillna("raw") == "raw"].copy()
+    if not test_rows.empty:
+        return str(test_rows.iloc[0]["candidate"])
+    val_rows = metrics.loc[metrics["split"].astype(str) == "val"].copy()
+    if "seed_aggregation" in val_rows.columns:
+        val_rows = val_rows.loc[val_rows["seed_aggregation"].fillna("raw") == "raw"].copy()
+    if val_rows.empty:
+        return None
+    by_candidate = (
+        val_rows.groupby("candidate", dropna=False)["pr_auc"]
+        .mean()
+        .sort_values(ascending=False, kind="mergesort")
+    )
+    if by_candidate.empty:
+        return None
+    return str(by_candidate.index[0])
+
+
+def _read_prediction_subset(artifacts: dict[str, Path], *, split: str) -> pd.DataFrame:
+    predictions = pd.read_csv(artifacts["predictions"])
+    subset = predictions.loc[predictions["split"].astype(str) == split].copy()
+    selected_candidate = _selected_artifact_candidate(artifacts)
+    if selected_candidate is not None and "candidate" in subset.columns:
+        candidate_subset = subset.loc[subset["candidate"].astype(str) == selected_candidate].copy()
+        if not candidate_subset.empty:
+            subset = candidate_subset
+    return subset
+
+
+def _merge_member_prediction_frames(member_frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    if not member_frames:
+        return pd.DataFrame()
+    merged: pd.DataFrame | None = None
+    key_cols: list[str] = []
+    for member_name, frame in member_frames.items():
+        member = frame.copy()
+        key_cols = [
+            column
+            for column in ("country", "anchor_time", "target_time", "y_true", "split", "fold", "protocol")
+            if column in member.columns
+        ]
+        renamed = member[key_cols + ["y_prob"]].rename(columns={"y_prob": f"y_prob__{member_name}"})
+        if merged is None:
+            merged = renamed
+        else:
+            merged = merged.merge(renamed, on=key_cols, how="inner", validate="one_to_one")
+    return merged if merged is not None else pd.DataFrame()
+
+
+def _weighted_member_probability(merged: pd.DataFrame, member_weights: dict[str, float]) -> np.ndarray:
+    probs = np.zeros(len(merged), dtype=np.float32)
+    for member_name, weight in member_weights.items():
+        column = f"y_prob__{member_name}"
+        if column not in merged.columns:
+            continue
+        probs += merged[column].to_numpy(dtype=np.float32) * np.float32(weight)
+    return probs
+
+
+def _build_meta_prediction_frame(
+    merged: pd.DataFrame,
+    y_prob: np.ndarray,
+    *,
+    experiment: str,
+    model: str,
+    split: str,
+    threshold: float,
+    candidate: str,
+    extra_columns: dict[str, object] | None = None,
+) -> pd.DataFrame:
+    frame = merged[["country", "anchor_time", "target_time", "y_true"]].copy()
+    frame["y_prob"] = y_prob.astype(np.float32)
+    frame["split"] = split
+    frame["experiment"] = experiment
+    frame["model"] = model
+    frame["candidate"] = candidate
+    frame["threshold"] = threshold
+    if "fold" in merged.columns:
+        frame["fold"] = merged["fold"]
+    if "protocol" in merged.columns:
+        frame["protocol"] = merged["protocol"]
+    for column, value in (extra_columns or {}).items():
+        frame[column] = value
+    return frame
+
+
+def _write_meta_summary_outputs(
+    output_path: Path,
+    *,
+    sample_manifest: pd.DataFrame,
+    predictions: pd.DataFrame,
+    metrics_rows: list[dict[str, object]],
+) -> dict[str, Path]:
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    if not progress_log.exists():
+        progress_log.write_text("", encoding="utf-8")
+    sample_manifest.to_csv(output_path / "sample_manifest.csv", index=False)
+    predictions.to_csv(output_path / "predictions.csv", index=False)
+    pd.DataFrame(metrics_rows).to_csv(output_path / "metrics_summary.csv", index=False)
+    test_predictions = predictions.loc[predictions["split"].astype(str) == "test"].copy()
+    if not test_predictions.empty:
+        summarize_prediction_frame(
+            test_predictions,
+            group_cols=["experiment", "model", "split", "country"],
+            min_positive=20,
+        ).to_csv(output_path / "country_metrics.csv", index=False)
+        summarize_prediction_frame(
+            add_month_column(test_predictions),
+            group_cols=["experiment", "model", "split", "month"],
+        ).to_csv(output_path / "monthly_metrics.csv", index=False)
+    return {
+        "sample_manifest": output_path / "sample_manifest.csv",
+        "metrics_summary": output_path / "metrics_summary.csv",
+        "predictions": output_path / "predictions.csv",
+        "progress_log": progress_log,
+    }
+
+
+def _build_late_fusion_artifacts(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    member_artifacts: dict[str, dict[str, Path]],
+) -> dict[str, Path]:
+    if not member_artifacts:
+        raise RuntimeError(f"{config.name} did not receive any member artifacts.")
+    output_path.mkdir(parents=True, exist_ok=True)
+    first_artifacts = next(iter(member_artifacts.values()))
+    sample_manifest = pd.read_csv(first_artifacts["sample_manifest"])
+
+    raw_scores = {
+        member_name: _meta_metric_score(pd.read_csv(artifacts["metrics_summary"]), split="val", metric="pr_auc")
+        for member_name, artifacts in member_artifacts.items()
+    }
+    member_weights = _normalize_member_weights(raw_scores)
+    member_weight_label = _member_weight_label(member_weights)
+    pd.DataFrame(
+        [
+            {
+                "experiment": config.name,
+                "member_experiment": member_name,
+                "val_pr_auc": raw_scores.get(member_name),
+                "weight": member_weights.get(member_name),
+            }
+            for member_name in member_artifacts
+        ]
+    ).to_csv(output_path / "member_weights.csv", index=False)
+
+    val_merged = _merge_member_prediction_frames(
+        {member_name: _read_prediction_subset(artifacts, split="val") for member_name, artifacts in member_artifacts.items()}
+    )
+    test_merged = _merge_member_prediction_frames(
+        {member_name: _read_prediction_subset(artifacts, split="test") for member_name, artifacts in member_artifacts.items()}
+    )
+    if val_merged.empty or test_merged.empty:
+        raise RuntimeError(f"{config.name} could not build late-fusion predictions from empty member outputs.")
+
+    val_prob = _weighted_member_probability(val_merged, member_weights)
+    threshold = find_best_threshold_f1(val_merged["y_true"].to_numpy(dtype=int), val_prob)
+    test_prob = _weighted_member_probability(test_merged, member_weights)
+
+    extra = {
+        "fusion_strategy": "val_pr_auc_weighted",
+        "member_weights": member_weight_label,
+    }
+    val_frame = _build_meta_prediction_frame(
+        val_merged,
+        val_prob,
+        experiment=config.name,
+        model="LateFusion",
+        split="val",
+        threshold=threshold,
+        candidate="+".join(config.meta_members),
+        extra_columns=extra,
+    )
+    test_frame = _build_meta_prediction_frame(
+        test_merged,
+        test_prob,
+        experiment=config.name,
+        model="LateFusion",
+        split="test",
+        threshold=threshold,
+        candidate="+".join(config.meta_members),
+        extra_columns=extra,
+    )
+
+    val_metrics = _metrics_row(
+        val_frame,
+        experiment=config.name,
+        model="LateFusion",
+        split="val",
+        candidate="+".join(config.meta_members),
+    )
+    test_metrics = _metrics_row(
+        test_frame,
+        experiment=config.name,
+        model="LateFusion",
+        split="test",
+        candidate="+".join(config.meta_members),
+    )
+    for row in (val_metrics, test_metrics):
+        row["fusion_strategy"] = "val_pr_auc_weighted"
+        row["member_weights"] = member_weight_label
+
+    artifacts = _write_meta_summary_outputs(
+        output_path,
+        sample_manifest=sample_manifest,
+        predictions=pd.concat([val_frame, test_frame], ignore_index=True),
+        metrics_rows=[val_metrics, test_metrics],
+    )
+    artifacts["member_weights"] = output_path / "member_weights.csv"
+    return artifacts
+
+
+def _run_late_fusion_experiment(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter | None,
+) -> dict[str, Path]:
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (config.name,),
+        f"late-fusion experiment started | members={config.meta_members} | data={config.data_path} | output={output_path}",
+    )
+
+    member_artifacts: dict[str, dict[str, Path]] = {}
+    member_configs = _resolve_meta_member_configs(config)
+    member_loop_started_at = reporter.now()
+    for member_index, member_config in enumerate(member_configs, start=1):
+        member_started_at = reporter.now()
+        reporter.log(
+            (config.name, member_config.name),
+            f"member {member_index}/{len(member_configs)} started",
+        )
+        member_artifacts[member_config.name] = run_experiment(
+            member_config,
+            output_dir=output_path / "member_runs",
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+        reporter.log_step(
+            (config.name, member_config.name),
+            label="member",
+            index=member_index,
+            total=len(member_configs),
+            loop_started_at=member_loop_started_at,
+            step_started_at=member_started_at,
+            extra="completed",
+        )
+
+    artifacts = _build_late_fusion_artifacts(config, output_path=output_path, member_artifacts=member_artifacts)
+    reporter.log(
+        (config.name,),
+        (
+            f"late-fusion experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
+            f"| artifacts={output_path}"
+        ),
+    )
+    return artifacts
+
+
+def _run_calibration_experiment(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter | None,
+) -> dict[str, Path]:
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (config.name,),
+        (
+            f"calibration experiment started | candidates={config.meta_members} "
+            f"| method={config.meta_calibration_method} | data={config.data_path} | output={output_path}"
+        ),
+    )
+
+    candidate_artifacts: dict[str, dict[str, Path]] = {}
+    candidate_configs = _resolve_meta_member_configs(config)
+    candidate_loop_started_at = reporter.now()
+    for candidate_index, candidate_config in enumerate(candidate_configs, start=1):
+        candidate_started_at = reporter.now()
+        reporter.log(
+            (config.name, candidate_config.name),
+            f"candidate {candidate_index}/{len(candidate_configs)} started",
+        )
+        if candidate_config.meta_kind == "late_fusion":
+            nested_member_artifacts: dict[str, dict[str, Path]] = {}
+            for nested_member in _resolve_meta_member_configs(candidate_config):
+                if nested_member.name not in candidate_artifacts:
+                    candidate_artifacts[nested_member.name] = run_experiment(
+                        nested_member,
+                        output_dir=output_path / "candidate_runs",
+                        folds=folds,
+                        final_train_range=final_train_range,
+                        final_test_range=final_test_range,
+                        skip_unavailable_models=skip_unavailable_models,
+                        reporter=reporter,
+                    )
+                nested_member_artifacts[nested_member.name] = candidate_artifacts[nested_member.name]
+            candidate_output_path = (output_path / "candidate_runs" / candidate_config.name).resolve()
+            candidate_artifacts[candidate_config.name] = _build_late_fusion_artifacts(
+                candidate_config,
+                output_path=candidate_output_path,
+                member_artifacts=nested_member_artifacts,
+            )
+        else:
+            candidate_artifacts[candidate_config.name] = run_experiment(
+                candidate_config,
+                output_dir=output_path / "candidate_runs",
+                folds=folds,
+                final_train_range=final_train_range,
+                final_test_range=final_test_range,
+                skip_unavailable_models=skip_unavailable_models,
+                reporter=reporter,
+            )
+        reporter.log_step(
+            (config.name, candidate_config.name),
+            label="candidate",
+            index=candidate_index,
+            total=len(candidate_configs),
+            loop_started_at=candidate_loop_started_at,
+            step_started_at=candidate_started_at,
+            extra="completed",
+        )
+
+    candidate_scores = pd.DataFrame(
+        [
+            {
+                "experiment": config.name,
+                "candidate_experiment": candidate_name,
+                "val_pr_auc": _meta_metric_score(pd.read_csv(artifacts["metrics_summary"]), split="val", metric="pr_auc"),
+            }
+            for candidate_name, artifacts in candidate_artifacts.items()
+            if candidate_name in config.meta_members
+        ]
+    ).sort_values("val_pr_auc", ascending=False, kind="mergesort")
+    candidate_scores.to_csv(output_path / "candidate_scores.csv", index=False)
+    if candidate_scores.empty:
+        raise RuntimeError(f"{config.name} did not produce any candidate scores.")
+
+    selected_name = str(candidate_scores.iloc[0]["candidate_experiment"])
+    selected_artifacts = candidate_artifacts[selected_name]
+    selected_predictions = pd.read_csv(selected_artifacts["predictions"])
+    val_predictions = selected_predictions.loc[selected_predictions["split"].astype(str) == "val"].copy()
+    test_predictions = selected_predictions.loc[selected_predictions["split"].astype(str) == "test"].copy()
+    if val_predictions.empty or test_predictions.empty:
+        raise RuntimeError(f"{config.name} selected candidate {selected_name} without val/test predictions.")
+
+    calibrator = fit_probability_calibrator(
+        val_predictions["y_true"].to_numpy(dtype=int),
+        val_predictions["y_prob"].to_numpy(dtype=np.float32),
+        method=config.meta_calibration_method,
+    )
+    calibrated_val_prob = apply_probability_calibrator(calibrator, val_predictions["y_prob"].to_numpy(dtype=np.float32))
+    calibrated_test_prob = apply_probability_calibrator(calibrator, test_predictions["y_prob"].to_numpy(dtype=np.float32))
+    threshold = find_best_threshold_f1(val_predictions["y_true"].to_numpy(dtype=int), calibrated_val_prob)
+
+    base_model_name = str(val_predictions["model"].iloc[0])
+    extra = {
+        "base_experiment": selected_name,
+        "base_model": base_model_name,
+        "calibration_method": calibrator.method,
+    }
+    val_frame = _build_meta_prediction_frame(
+        val_predictions,
+        calibrated_val_prob,
+        experiment=config.name,
+        model=f"Calibrated{base_model_name}",
+        split="val",
+        threshold=threshold,
+        candidate=selected_name,
+        extra_columns=extra,
+    )
+    test_frame = _build_meta_prediction_frame(
+        test_predictions,
+        calibrated_test_prob,
+        experiment=config.name,
+        model=f"Calibrated{base_model_name}",
+        split="test",
+        threshold=threshold,
+        candidate=selected_name,
+        extra_columns=extra,
+    )
+    val_metrics = _metrics_row(
+        val_frame,
+        experiment=config.name,
+        model=f"Calibrated{base_model_name}",
+        split="val",
+        candidate=selected_name,
+    )
+    test_metrics = _metrics_row(
+        test_frame,
+        experiment=config.name,
+        model=f"Calibrated{base_model_name}",
+        split="test",
+        candidate=selected_name,
+    )
+    for row in (val_metrics, test_metrics):
+        row["base_experiment"] = selected_name
+        row["base_model"] = base_model_name
+        row["calibration_method"] = calibrator.method
+
+    sample_manifest = pd.read_csv(selected_artifacts["sample_manifest"])
+    artifacts = _write_meta_summary_outputs(
+        output_path,
+        sample_manifest=sample_manifest,
+        predictions=pd.concat([val_frame, test_frame], ignore_index=True),
+        metrics_rows=[val_metrics, test_metrics],
+    )
+    artifacts["candidate_scores"] = output_path / "candidate_scores.csv"
+    reporter.log(
+        (config.name,),
+        (
+            f"calibration experiment completed | selected={selected_name} | method={calibrator.method} "
+            f"| elapsed={format_duration(reporter.now() - experiment_started_at)} | artifacts={output_path}"
+        ),
+    )
+    return artifacts
 
 
 def _run_repeated_seed_experiment(

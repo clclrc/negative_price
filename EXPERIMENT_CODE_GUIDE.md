@@ -70,10 +70,14 @@ Extended experiment IDs:
 - `E30`: 20-market public-feature `GRUHybridGated` experiment with gated sequence-tabular fusion, `window=168`, `h=6`
 - `E31`: 20-market public-feature `GRUHybridGated` experiment with mechanism-aware engineered tabular features, `window=168`, `h=6`
 - `E32`: 20-market public-feature `GRUHybridGatedMultiTask` experiment with mechanism-aware features and an auxiliary future-price target, `window=168`, `h=6`
+- `E33`: repeated-seed version of `E30` with aggregated metrics across multiple random seeds
+- `E34`: repeated-seed version of `E31` with aggregated metrics across multiple random seeds
+- `E35`: validation-weighted late-fusion ensemble wrapper over `E30` and `E31`
+- `E36`: calibration wrapper that selects the strongest validation-time candidate among `E30`, `E31`, and `E35`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, and `E32` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, and `E36` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -93,6 +97,10 @@ Important:
 - `E30` tests whether gated fusion between sequence and tabular representations helps more than simple concatenation
 - `E31` keeps the `E30`-style gated hybrid but adds mechanism-aware engineered features such as ramps, drawdowns, and calendar interactions
 - `E32` adds a future-price auxiliary target to the `E31`-style mainline while keeping future-event classification as the primary output
+- `E33` is the repeated-seed stability check for the `E30` mainline
+- `E34` is the repeated-seed stability check for the `E31` mechanism-aware branch
+- `E35` trains `E30` and `E31` as members and then builds a validation-`PR-AUC`-weighted late-fusion ensemble from their predictions
+- `E36` trains or reuses `E30`, `E31`, and `E35`, selects the strongest validation-time candidate, and applies probability calibration to that selected branch
 
 All default experiment definitions are created in:
 
@@ -136,7 +144,7 @@ Current next deep-learning phase:
 - use `E27` to test whether a larger training budget helps the `E23` line
 - keep `E24` and `E28` as the conditional renewables-aware full-setup branch rather than the default mainline
 - keep `E21` and `E22A/E22B` as supporting evidence that the hybrid and renewables directions were real before the mainline switched to `E23`
-- once the current `E25-E28` round is judged, use `E29-E32` as the next model-design branch around the same full benchmark rather than switching to a transformer-first line
+- once the `E29-E32` branch is judged, use `E33-E36` as the stability, complementarity, and calibration branch around `E30/E31` rather than reopening older backbone questions
 
 If optional ML dependencies are missing and you only want available models:
 
@@ -372,6 +380,9 @@ For the current roadmap:
 - use `E29` and `E30` as the first architectural follow-ups once the `E23` line is stable enough
 - use `E31` to test mechanism-aware engineered features without changing the main task definition
 - use `E32` to test multi-task event-plus-price learning only after the stronger single-task hybrids are available
+- use `E33` and `E34` to check whether the `E30/E31` gains survive seed variation
+- use `E35` to test whether `E30` and `E31` are complementary enough to beat either single branch
+- use `E36` to test whether the strongest available completed branch can be made more decision-useful through calibration
 
 ## Practical note on file placement
 
