@@ -74,10 +74,14 @@ Extended experiment IDs:
 - `E34`: repeated-seed version of `E31` with aggregated metrics across multiple random seeds
 - `E35`: validation-weighted late-fusion ensemble wrapper over `E30` and `E31`
 - `E36`: calibration wrapper that selects the strongest validation-time candidate among `E30`, `E31`, and `E35`
+- `E37`: stability-tuned `E30` with a lower sequence learning rate and a larger training budget
+- `E38`: stability-tuned `E31` with the same stability-oriented training changes
+- `E39`: stacking ensemble wrapper over `E30` and `E31` using validation-time member predictions as stacker inputs
+- `E40`: cross-seed ensemble wrapper over `E33` and `E34` that turns repeated-seed diversity into weighted ensemble members
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, and `E36` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, and `E40` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -101,6 +105,10 @@ Important:
 - `E34` is the repeated-seed stability check for the `E31` mechanism-aware branch
 - `E35` trains `E30` and `E31` as members and then builds a validation-`PR-AUC`-weighted late-fusion ensemble from their predictions
 - `E36` trains or reuses `E30`, `E31`, and `E35`, selects the strongest validation-time candidate, and applies probability calibration to that selected branch
+- `E37` keeps the `E30` architecture fixed but lowers the learning rate while extending the epoch and patience budget to reduce optimization variance
+- `E38` applies the same stability-oriented training changes to the `E31` mechanism-aware branch
+- `E39` trains `E30` and `E31` as members and fits a small logistic-regression stacker on their validation-time probabilities
+- `E40` trains or reuses `E33` and `E34`, expands their raw seed members, and builds a validation-`PR-AUC`-weighted cross-seed ensemble
 
 All default experiment definitions are created in:
 

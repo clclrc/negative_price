@@ -93,19 +93,24 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E24` should remain exploratory until it can outperform `E23`
 - The next round should optimize and stress-test the `E23` line rather than broadening the feature space again
 
-### Signal group 7: full-setup stress test and next-generation hybrid variants (`E25-E31`)
+### Signal group 7: full-setup stress test and next-generation hybrid variants (`E25-E33`)
 - `E25` showed that the `E23` line has meaningful seed sensitivity: the repeated-seed mean test `PR-AUC` is lower than the single-run `E23` score, even though the mean `F1` is slightly higher
 - `E26` underperformed `E23` on the main metric, so focal loss still does not look like the best way to improve the full-setup hybrid line
 - `E27` slightly improved over `E23`, which suggests training budget matters, but only modestly
+- `E28` improved slightly over `E24`, which means the full renewables-aware branch is not dead, but the gain is too small to make it the main score line
 - `E29` improved over `E23`, so temporal attention pooling is a real positive direction, but it did not become the strongest line
 - `E30` is the strongest completed result so far under the full `20-country + public + h=6` setup, outperforming `E23` on `PR-AUC`, `ROC-AUC`, `recall`, `F1`, and balanced accuracy
 - `E31` also outperformed `E23`, with the strongest completed `precision` and `F1`, although its recall and balanced accuracy are below `E30`
-- `E28` and `E32` are still running or incomplete, so no roadmap change should depend on them yet
+- `E32` underperformed both `E30` and `E31`, so the current multi-task design should not be prioritized further
+- `E33` confirmed that the `E30` branch is genuinely strong, but also showed meaningful seed variance because its repeated-seed mean falls below the best single `E30` run
+- `E34-E36` are still pending, so no roadmap change should depend on them yet
 
 #### Direction implication
 - `E30` should replace `E23` as the main deep-learning benchmark for the full setup
 - `E31` should be kept as a serious parallel branch because it appears complementary rather than redundant
-- The immediate next round should focus on validating `E30` and `E31`, not reopening focal loss or older pure-`GRU` questions
+- `E28` should remain exploratory and not replace the public-feature mainline
+- The current multi-task design should be deprioritized unless a later variant changes the outcome materially
+- The immediate next round should focus on validating and exploiting `E30` and `E31`, not reopening focal loss or older pure-`GRU` questions
 
 ## Direction assessment
 
@@ -336,13 +341,18 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Hybrid is no longer just a justification question; it is the strongest current next-step line
 - Missingness-aware `20-country` renewables remains exploratory rather than decisive
 
-## Current completed-round judgment after `E25-E27` and `E29-E31`
+## Current completed-round judgment after `E28`, `E32`, `E33`, and `E34`
 
 - `E30` is the strongest completed full-setup deep-learning result and should now be treated as the main score target
 - `E31` is close enough to `E30`, and different enough in `precision` versus `recall`, that it should remain an active companion branch
 - `E25` shows the old `E23` line was not stable enough to treat a single run as fully representative
 - `E26` should not be prioritized further
-- `E28` and `E32` are still pending, so they should not yet drive roadmap decisions
+- `E28` is a small positive update to the renewables-aware full branch, but not a mainline replacement
+- `E32` should not be prioritized further in its current form
+- `E33` confirms that the `E30` line is worth keeping, but it also raises the priority of stability-aware follow-up experiments
+- `E34` shows that the `E31` line is slightly weaker than `E33` on repeated-seed mean `PR-AUC`, but much more stable across seeds
+- `E35` is still incomplete, and its currently finished `E30` member rerun should not be mistaken for the late-fusion result itself
+- `E36` is still pending, so it should not yet be interpreted as a final direction change
 
 ## Next planned experiments around `E30` and `E31`
 
@@ -356,6 +366,7 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E31` may be complementary rather than weaker, because it trades some recall for noticeably higher precision and `F1`
 - `E35` is justified because `E30` and `E31` show different error profiles under the same setup
 - `E36` is justified by both the literature and the current score profile: once the strongest classifier family is identified, probability quality becomes the next high-value question
+- `E34` strengthens the justification for `E35`, because it shows that `E31` still contributes a robustness profile that `E30` does not provide on its own
 
 ### Planned roles
 - `E33` answers whether the `E30` gain is stable across seeds
@@ -367,7 +378,35 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 
 - `E29-E32` are already implemented as config defaults
 - `E33-E36` are now also implemented as config defaults
+- `E37-E40` are now also implemented as config defaults
 - `E33-E36` should still be interpreted around completed `E30/E31` evidence unless `E32` later changes the ordering materially
+
+## Prepared follow-up experiments after `E34-E36`
+
+- `E37`: stability-tuned `E30`
+- `E38`: stability-tuned `E31`
+- `E39`: out-of-fold stacking ensemble over `E30` and `E31`
+- `E40`: cross-seed branch ensemble built from the strongest completed repeated-seed branch or branches
+
+### Why these are the right next designs
+
+- `E33` showed that the `E30` branch has non-trivial seed variance, so a stability-tuned variant is justified before more backbone churn
+- `E31` may still become the more defensible branch if `E34` shows better repeated-seed behavior, so it also deserves a stability-focused follow-up design
+- A stacking ensemble is a stronger complementarity test than the current static weighted late fusion in `E35`
+- A cross-seed ensemble turns observed seed diversity into a modeling asset rather than treating it only as experimental noise
+
+### Planned roles
+
+- `E37`: keep the `E30` architecture, but reduce optimization variance with a lower learning rate and a larger patience or epoch budget
+- `E38`: apply the same stability-oriented training changes to the `E31` mechanism-aware branch
+- `E39`: use validation-time out-of-fold predictions from `E30` and `E31` as inputs to a small stacking model rather than a fixed weighted average
+- `E40`: combine repeated-seed members of the strongest completed branch, or of both `E30` and `E31` if both remain competitive, and only add calibration on top if `E36` proves helpful
+
+### Status note
+
+- `E37-E40` are now implemented as config defaults because the user explicitly requested early implementation
+- They should still be interpreted as pending branches until `E35-E36` and then `E37-E40` themselves produce completed results
+- The partial `E35` member outputs are still not enough to reorder these follow-ups yet
 
 ## Literature-informed addendum
 

@@ -92,6 +92,26 @@ def run_experiment(
             skip_unavailable_models=skip_unavailable_models,
             reporter=reporter,
         )
+    if config.meta_kind == "stacking":
+        return _run_stacking_experiment(
+            config,
+            output_path=output_path,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+    if config.meta_kind == "cross_seed_ensemble":
+        return _run_cross_seed_ensemble_experiment(
+            config,
+            output_path=output_path,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
     if config.meta_kind == "calibration":
         return _run_calibration_experiment(
             config,
@@ -335,6 +355,56 @@ def _read_prediction_subset(artifacts: dict[str, Path], *, split: str) -> pd.Dat
     return subset
 
 
+def _seed_member_label(experiment_name: str, seed: object) -> str:
+    if pd.isna(seed):
+        return experiment_name
+    if isinstance(seed, (int, np.integer)):
+        return f"{experiment_name}_SEED_{int(seed)}"
+    if isinstance(seed, (float, np.floating)) and float(seed).is_integer():
+        return f"{experiment_name}_SEED_{int(seed)}"
+    return f"{experiment_name}_SEED_{seed}"
+
+
+def _seed_member_scores(
+    artifacts: dict[str, Path],
+    *,
+    split: str,
+    metric: str,
+    experiment_name: str,
+) -> dict[str, float]:
+    metrics = pd.read_csv(artifacts["metrics_summary"])
+    subset = metrics.loc[metrics["split"].astype(str) == split].copy()
+    if "seed_aggregation" in subset.columns:
+        subset = subset.loc[subset["seed_aggregation"].fillna("raw") == "raw"].copy()
+    if subset.empty or metric not in subset.columns:
+        return {experiment_name: float("nan")}
+    if "seed" not in subset.columns or subset["seed"].dropna().empty:
+        values = pd.to_numeric(subset[metric], errors="coerce")
+        return {experiment_name: float(values.mean()) if not values.empty else float("nan")}
+    scores: dict[str, float] = {}
+    grouped = subset.groupby("seed", dropna=False)[metric].mean()
+    for seed, value in grouped.items():
+        scores[_seed_member_label(experiment_name, seed)] = float(value)
+    return scores
+
+
+def _seed_member_prediction_frames(
+    artifacts: dict[str, Path],
+    *,
+    split: str,
+    experiment_name: str,
+) -> dict[str, pd.DataFrame]:
+    subset = _read_prediction_subset(artifacts, split=split)
+    if subset.empty:
+        return {}
+    if "seed" not in subset.columns or subset["seed"].dropna().empty:
+        return {experiment_name: subset.drop(columns=["seed"], errors="ignore").copy()}
+    frames: dict[str, pd.DataFrame] = {}
+    for seed, frame in subset.groupby("seed", dropna=False):
+        frames[_seed_member_label(experiment_name, seed)] = frame.drop(columns=["seed"], errors="ignore").copy()
+    return frames
+
+
 def _merge_member_prediction_frames(member_frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
     if not member_frames:
         return pd.DataFrame()
@@ -521,6 +591,214 @@ def _build_late_fusion_artifacts(
     return artifacts
 
 
+def _build_stacking_artifacts(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    member_artifacts: dict[str, dict[str, Path]],
+) -> dict[str, Path]:
+    if not member_artifacts:
+        raise RuntimeError(f"{config.name} did not receive any member artifacts.")
+    output_path.mkdir(parents=True, exist_ok=True)
+    first_artifacts = next(iter(member_artifacts.values()))
+    sample_manifest = pd.read_csv(first_artifacts["sample_manifest"])
+
+    val_merged = _merge_member_prediction_frames(
+        {member_name: _read_prediction_subset(artifacts, split="val") for member_name, artifacts in member_artifacts.items()}
+    )
+    test_merged = _merge_member_prediction_frames(
+        {member_name: _read_prediction_subset(artifacts, split="test") for member_name, artifacts in member_artifacts.items()}
+    )
+    if val_merged.empty or test_merged.empty:
+        raise RuntimeError(f"{config.name} could not build stacking predictions from empty member outputs.")
+
+    feature_columns = [f"y_prob__{member_name}" for member_name in member_artifacts]
+    val_X = val_merged[feature_columns].to_numpy(dtype=np.float32)
+    test_X = test_merged[feature_columns].to_numpy(dtype=np.float32)
+    val_y = val_merged["y_true"].to_numpy(dtype=int)
+    stacker_strategy = "logistic_regression"
+    stacker_c = 1.0
+    if np.unique(val_y).size < 2:
+        stacker_strategy = "mean_fallback"
+        val_prob = val_X.mean(axis=1).astype(np.float32)
+        test_prob = test_X.mean(axis=1).astype(np.float32)
+        coefficient_rows = [
+            {
+                "experiment": config.name,
+                "feature": member_name,
+                "coefficient": 1.0 / float(len(member_artifacts)),
+                "intercept": 0.0,
+                "stacker_strategy": stacker_strategy,
+                "stacker_C": pd.NA,
+            }
+            for member_name in member_artifacts
+        ]
+    else:
+        stacker = fit_logistic_regression(val_X, val_y, C=stacker_c, seed=config.random_seed)
+        val_prob = predict_logistic_regression(stacker, val_X)
+        test_prob = predict_logistic_regression(stacker, test_X)
+        coefficient_rows = [
+            {
+                "experiment": config.name,
+                "feature": member_name,
+                "coefficient": float(stacker.coef_[0][feature_index]),
+                "intercept": float(stacker.intercept_[0]),
+                "stacker_strategy": stacker_strategy,
+                "stacker_C": stacker_c,
+            }
+            for feature_index, member_name in enumerate(member_artifacts)
+        ]
+    pd.DataFrame(coefficient_rows).to_csv(output_path / "stacking_coefficients.csv", index=False)
+
+    threshold = find_best_threshold_f1(val_y, val_prob)
+    extra = {
+        "stacker_strategy": stacker_strategy,
+        "stacker_C": stacker_c,
+    }
+    candidate = "+".join(config.meta_members)
+    val_frame = _build_meta_prediction_frame(
+        val_merged,
+        val_prob,
+        experiment=config.name,
+        model="StackingLogisticRegression",
+        split="val",
+        threshold=threshold,
+        candidate=candidate,
+        extra_columns=extra,
+    )
+    test_frame = _build_meta_prediction_frame(
+        test_merged,
+        test_prob,
+        experiment=config.name,
+        model="StackingLogisticRegression",
+        split="test",
+        threshold=threshold,
+        candidate=candidate,
+        extra_columns=extra,
+    )
+
+    val_metrics = _metrics_row(
+        val_frame,
+        experiment=config.name,
+        model="StackingLogisticRegression",
+        split="val",
+        candidate=candidate,
+    )
+    test_metrics = _metrics_row(
+        test_frame,
+        experiment=config.name,
+        model="StackingLogisticRegression",
+        split="test",
+        candidate=candidate,
+    )
+    for row in (val_metrics, test_metrics):
+        row["stacker_strategy"] = stacker_strategy
+        row["stacker_C"] = stacker_c
+
+    artifacts = _write_meta_summary_outputs(
+        output_path,
+        sample_manifest=sample_manifest,
+        predictions=pd.concat([val_frame, test_frame], ignore_index=True),
+        metrics_rows=[val_metrics, test_metrics],
+    )
+    artifacts["stacking_coefficients"] = output_path / "stacking_coefficients.csv"
+    return artifacts
+
+
+def _build_cross_seed_ensemble_artifacts(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    member_artifacts: dict[str, dict[str, Path]],
+) -> dict[str, Path]:
+    if not member_artifacts:
+        raise RuntimeError(f"{config.name} did not receive any member artifacts.")
+    output_path.mkdir(parents=True, exist_ok=True)
+    first_artifacts = next(iter(member_artifacts.values()))
+    sample_manifest = pd.read_csv(first_artifacts["sample_manifest"])
+
+    raw_scores: dict[str, float] = {}
+    val_frames: dict[str, pd.DataFrame] = {}
+    test_frames: dict[str, pd.DataFrame] = {}
+    for experiment_name, artifacts in member_artifacts.items():
+        raw_scores.update(_seed_member_scores(artifacts, split="val", metric="pr_auc", experiment_name=experiment_name))
+        val_frames.update(_seed_member_prediction_frames(artifacts, split="val", experiment_name=experiment_name))
+        test_frames.update(_seed_member_prediction_frames(artifacts, split="test", experiment_name=experiment_name))
+    member_weights = _normalize_member_weights(raw_scores)
+    member_weight_label = _member_weight_label(member_weights)
+    pd.DataFrame(
+        [
+            {
+                "experiment": config.name,
+                "member_experiment": member_name,
+                "val_pr_auc": raw_scores.get(member_name),
+                "weight": member_weights.get(member_name),
+            }
+            for member_name in val_frames
+        ]
+    ).to_csv(output_path / "member_weights.csv", index=False)
+
+    val_merged = _merge_member_prediction_frames(val_frames)
+    test_merged = _merge_member_prediction_frames(test_frames)
+    if val_merged.empty or test_merged.empty:
+        raise RuntimeError(f"{config.name} could not build cross-seed predictions from empty member outputs.")
+
+    val_prob = _weighted_member_probability(val_merged, member_weights)
+    threshold = find_best_threshold_f1(val_merged["y_true"].to_numpy(dtype=int), val_prob)
+    test_prob = _weighted_member_probability(test_merged, member_weights)
+    extra = {
+        "fusion_strategy": "cross_seed_val_pr_auc_weighted",
+        "member_weights": member_weight_label,
+    }
+    candidate = "+".join(config.meta_members)
+    val_frame = _build_meta_prediction_frame(
+        val_merged,
+        val_prob,
+        experiment=config.name,
+        model="CrossSeedEnsemble",
+        split="val",
+        threshold=threshold,
+        candidate=candidate,
+        extra_columns=extra,
+    )
+    test_frame = _build_meta_prediction_frame(
+        test_merged,
+        test_prob,
+        experiment=config.name,
+        model="CrossSeedEnsemble",
+        split="test",
+        threshold=threshold,
+        candidate=candidate,
+        extra_columns=extra,
+    )
+    val_metrics = _metrics_row(
+        val_frame,
+        experiment=config.name,
+        model="CrossSeedEnsemble",
+        split="val",
+        candidate=candidate,
+    )
+    test_metrics = _metrics_row(
+        test_frame,
+        experiment=config.name,
+        model="CrossSeedEnsemble",
+        split="test",
+        candidate=candidate,
+    )
+    for row in (val_metrics, test_metrics):
+        row["fusion_strategy"] = "cross_seed_val_pr_auc_weighted"
+        row["member_weights"] = member_weight_label
+
+    artifacts = _write_meta_summary_outputs(
+        output_path,
+        sample_manifest=sample_manifest,
+        predictions=pd.concat([val_frame, test_frame], ignore_index=True),
+        metrics_rows=[val_metrics, test_metrics],
+    )
+    artifacts["member_weights"] = output_path / "member_weights.csv"
+    return artifacts
+
+
 def _run_late_fusion_experiment(
     config: ExperimentConfig,
     *,
@@ -573,6 +851,125 @@ def _run_late_fusion_experiment(
         (config.name,),
         (
             f"late-fusion experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
+            f"| artifacts={output_path}"
+        ),
+    )
+    return artifacts
+
+
+def _run_stacking_experiment(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter | None,
+) -> dict[str, Path]:
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (config.name,),
+        f"stacking experiment started | members={config.meta_members} | data={config.data_path} | output={output_path}",
+    )
+
+    member_artifacts: dict[str, dict[str, Path]] = {}
+    member_configs = _resolve_meta_member_configs(config)
+    member_loop_started_at = reporter.now()
+    for member_index, member_config in enumerate(member_configs, start=1):
+        member_started_at = reporter.now()
+        reporter.log(
+            (config.name, member_config.name),
+            f"member {member_index}/{len(member_configs)} started",
+        )
+        member_artifacts[member_config.name] = run_experiment(
+            member_config,
+            output_dir=output_path / "member_runs",
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+        reporter.log_step(
+            (config.name, member_config.name),
+            label="member",
+            index=member_index,
+            total=len(member_configs),
+            loop_started_at=member_loop_started_at,
+            step_started_at=member_started_at,
+            extra="completed",
+        )
+
+    artifacts = _build_stacking_artifacts(config, output_path=output_path, member_artifacts=member_artifacts)
+    reporter.log(
+        (config.name,),
+        (
+            f"stacking experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
+            f"| artifacts={output_path}"
+        ),
+    )
+    return artifacts
+
+
+def _run_cross_seed_ensemble_experiment(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter | None,
+) -> dict[str, Path]:
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    experiment_started_at = reporter.now()
+    reporter.log(
+        (config.name,),
+        (
+            f"cross-seed ensemble experiment started | members={config.meta_members} "
+            f"| data={config.data_path} | output={output_path}"
+        ),
+    )
+
+    member_artifacts: dict[str, dict[str, Path]] = {}
+    member_configs = _resolve_meta_member_configs(config)
+    member_loop_started_at = reporter.now()
+    for member_index, member_config in enumerate(member_configs, start=1):
+        member_started_at = reporter.now()
+        reporter.log(
+            (config.name, member_config.name),
+            f"member {member_index}/{len(member_configs)} started",
+        )
+        member_artifacts[member_config.name] = run_experiment(
+            member_config,
+            output_dir=output_path / "member_runs",
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+        reporter.log_step(
+            (config.name, member_config.name),
+            label="member",
+            index=member_index,
+            total=len(member_configs),
+            loop_started_at=member_loop_started_at,
+            step_started_at=member_started_at,
+            extra="completed",
+        )
+
+    artifacts = _build_cross_seed_ensemble_artifacts(config, output_path=output_path, member_artifacts=member_artifacts)
+    reporter.log(
+        (config.name,),
+        (
+            f"cross-seed ensemble experiment completed | elapsed={format_duration(reporter.now() - experiment_started_at)} "
             f"| artifacts={output_path}"
         ),
     )

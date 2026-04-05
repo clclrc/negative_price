@@ -203,3 +203,28 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E36"].meta_members, ("E30", "E31", "E35"))
         self.assertEqual(configs["E36"].meta_calibration_method, "sigmoid")
         self.assertEqual(configs["E36"].models, ())
+
+    def test_default_configs_include_stability_and_ensemble_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E37", "E38", "E39", "E40"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E37"].models, ("GRUHybridGated",))
+        self.assertEqual(configs["E38"].models, ("GRUHybridGated",))
+        self.assertEqual(configs["E37"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E38"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E37"].sequence_max_epochs, 80)
+        self.assertEqual(configs["E38"].sequence_max_epochs, 80)
+        self.assertEqual(configs["E37"].sequence_patience, 12)
+        self.assertEqual(configs["E38"].sequence_patience, 12)
+        self.assertFalse(configs["E37"].use_mechanism_features)
+        self.assertTrue(configs["E38"].use_mechanism_features)
+
+        self.assertEqual(configs["E39"].meta_kind, "stacking")
+        self.assertEqual(configs["E39"].meta_members, ("E30", "E31"))
+        self.assertEqual(configs["E39"].models, ())
+
+        self.assertEqual(configs["E40"].meta_kind, "cross_seed_ensemble")
+        self.assertEqual(configs["E40"].meta_members, ("E33", "E34"))
+        self.assertEqual(configs["E40"].models, ())

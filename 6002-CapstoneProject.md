@@ -303,11 +303,16 @@ Based on the completed `E25-E27` and `E29-E31` results, the evidence now support
 14. `E29` confirms that temporal attention pooling is a positive direction, but it is not the strongest completed line.
 15. `E30` is now the strongest completed deep-learning model under the full `20-country + public + h = 6` setup.
 16. `E31` remains a serious companion branch because it gives stronger completed `precision` and `F1` than `E30`, even though `E30` is stronger on `PR-AUC`, `recall`, and balanced accuracy.
-17. `E28` and `E32` are still unfinished, so they should not yet change the roadmap.
+17. `E28` gives only a small positive update to the full renewables-aware branch, so that line remains exploratory rather than decisive.
+18. `E32` does not outperform `E30` or `E31`, so the current multi-task design should not be prioritized further.
+19. `E33` confirms that the `E30` line is genuinely strong, but it also shows non-trivial seed variance, so stability testing remains necessary.
+20. `E34` shows that the `E31` branch is slightly weaker than `E33` on repeated-seed mean `PR-AUC`, but much more stable across seeds.
+21. The currently finished `E35` member rerun of `E30` should not be interpreted as the `E35` late-fusion result itself.
+22. `E35-E36` are still pending and should be interpreted before any final ensemble or calibration judgment is locked in.
 
 ## **Next experimental plan**
 
-The next round should now focus on validating and exploiting the complementary strengths of `E30` and `E31`, rather than reopening older backbone choices.
+The current active round should still focus on validating and exploiting the complementary strengths of `E30` and `E31`, rather than reopening older backbone choices.
 
 1. `E33`: repeated-seed version of `E30`.  
    Goal: verify whether the new main score target is stable across random seeds.
@@ -318,13 +323,15 @@ The next round should now focus on validating and exploiting the complementary s
 4. `E36`: probability calibration branch built on the strongest available completed classifier among `E30`, `E31`, and `E35`.  
    Goal: improve decision usefulness and probability quality without sacrificing ranking quality.
 
+At the moment, the newly completed `E34` result does not justify changing this order. It reinforces the need for `E35`, because `E31` still offers a more stable repeated-seed profile even though `E33` keeps a slightly higher repeated-seed mean.
+
 ### **Current implementation status**
 
-The repository already contains implemented config defaults for `E29-E32`, but the current round should still be interpreted as:
+The repository already contains implemented config defaults for `E29-E40`, but the current round should still be interpreted as:
 
-1. `E29-E31`: completed and informative.
-2. `E28`: still running or incomplete.
-3. `E32`: still running or incomplete.
+1. `E28`, `E29`, `E30`, `E31`, `E32`, and `E33`: completed and informative.
+2. `E34`: completed and informative.
+3. `E35-E40`: implemented, but still pending or not yet interpreted.
 
 ### **Workflow note for future rounds**
 
@@ -333,3 +340,20 @@ For new experiment families after this point, the preferred order is:
 1. write down the design and comparison logic first,
 2. judge the design against the latest completed evidence,
 3. only then implement the new experiment IDs in code.
+
+### **Prepared follow-up experiments after `E34-E36`**
+
+The next family should be designed around stability and complementarity rather than more backbone churn:
+
+1. `E37`: stability-tuned `E30`.  
+   Goal: keep the `E30` architecture but reduce seed variance with a lower learning rate and a larger patience or epoch budget.
+2. `E38`: stability-tuned `E31`.  
+   Goal: apply the same stability-focused training changes to the mechanism-aware branch and see whether it becomes the more defensible full-setup line.
+3. `E39`: out-of-fold stacking ensemble over `E30` and `E31`.  
+   Goal: test a stronger complementarity mechanism than the current static weighted late fusion in `E35`.
+4. `E40`: cross-seed branch ensemble.  
+   Goal: combine repeated-seed members of the strongest completed branch, or of both `E30` and `E31` if both remain competitive, so seed diversity becomes a modeling asset instead of only an evaluation nuisance.
+
+These four experiments are now implemented in code because an earlier implementation was explicitly requested.
+
+They should still be interpreted as pending follow-up branches until the `E34-E36` round and then the `E37-E40` round are both completed. The partial `E35` member outputs are still not sufficient to reorder these follow-ups yet.

@@ -266,6 +266,86 @@ class NegativePriceRunnerTest(unittest.TestCase):
             self.assertIn("LateFusion", set(e35_metrics["model"]))
             self.assertTrue(any(str(model).startswith("Calibrated") for model in set(e36_metrics["model"])))
 
+    def test_stacking_and_cross_seed_meta_experiments_smoke_run_with_patched_member_configs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            common_kwargs = {
+                "data_path": data_path,
+                "countries": ("AT", "BE"),
+                "feature_group": "public",
+                "window_hours": 24,
+                "horizon_hours": 1,
+                "split_strategy": "unit",
+                "ffill_limit": 3,
+                "primary_metric": "pr_auc",
+                "random_seed": 42,
+            }
+            e30 = ExperimentConfig(name="E30", models=("Majority",), **common_kwargs)
+            e31 = ExperimentConfig(name="E31", models=("LogisticRegression",), **common_kwargs)
+            e33 = ExperimentConfig(name="E33", models=("Majority",), repeat_random_seeds=(42, 52), **common_kwargs)
+            e34 = ExperimentConfig(name="E34", models=("LogisticRegression",), repeat_random_seeds=(42, 52), **common_kwargs)
+            e39 = ExperimentConfig(
+                name="E39",
+                models=(),
+                meta_kind="stacking",
+                meta_members=("E30", "E31"),
+                **common_kwargs,
+            )
+            e40 = ExperimentConfig(
+                name="E40",
+                models=(),
+                meta_kind="cross_seed_ensemble",
+                meta_members=("E33", "E34"),
+                **common_kwargs,
+            )
+            folds = (
+                WalkForwardFold(
+                    "F1",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-04 00:00:00")),
+                    TimeRange(utc_ts("2024-01-04 00:00:00"), utc_ts("2024-01-06 00:00:00")),
+                ),
+                WalkForwardFold(
+                    "F2",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-06 00:00:00")),
+                    TimeRange(utc_ts("2024-01-06 00:00:00"), utc_ts("2024-01-08 00:00:00")),
+                ),
+            )
+            config_map = {
+                "E30": e30,
+                "E31": e31,
+                "E33": e33,
+                "E34": e34,
+                "E39": e39,
+                "E40": e40,
+            }
+
+            with patch("negative_price_experiments.pipeline.build_default_experiment_configs", return_value=config_map):
+                e39_artifacts = run_experiment(
+                    e39,
+                    output_dir=out_dir,
+                    folds=folds,
+                    final_train_range=TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-07 00:00:00")),
+                    final_test_range=TimeRange(utc_ts("2024-01-07 00:00:00"), utc_ts("2024-01-08 12:00:00")),
+                )
+                e40_artifacts = run_experiment(
+                    e40,
+                    output_dir=out_dir,
+                    folds=folds,
+                    final_train_range=TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-07 00:00:00")),
+                    final_test_range=TimeRange(utc_ts("2024-01-07 00:00:00"), utc_ts("2024-01-08 12:00:00")),
+                )
+
+            e39_output = Path(e39_artifacts["metrics_summary"]).resolve().parent
+            e40_output = Path(e40_artifacts["metrics_summary"]).resolve().parent
+            self.assertTrue((e39_output / "stacking_coefficients.csv").exists())
+            self.assertTrue((e40_output / "member_weights.csv").exists())
+            self.assertIn("StackingLogisticRegression", set(pd.read_csv(e39_artifacts["metrics_summary"])["model"]))
+            self.assertIn("CrossSeedEnsemble", set(pd.read_csv(e40_artifacts["metrics_summary"])["model"]))
+
     def test_skip_unavailable_models_keeps_tabular_run_alive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
