@@ -355,6 +355,35 @@ The next deep-learning family after the current `E30-E40` line should be centere
 
 These four experiments are now implemented in code as the repository's prepared next-generation deep-learning branch.
 
+### **Latest outcome from `E40` and `E45-E47`**
+
+The newly completed results materially reorder the deep-learning branch again. `E40` does not beat the simpler `E35` late-fusion ensemble, so cross-seed ensembling is not currently worth prioritizing. In contrast, `E45 = GRUMultiMarket` gives test `PR-AUC = 0.3880`, which makes it the strongest completed deep single model so far and the first next-generation deep result to beat both `E37 = 0.3494` and `E35 = 0.3691`. This is a strong signal that jointly modeling multiple markets at the same anchor time is genuinely useful.
+
+However, the first explicit graph variants do not improve on that gain. `E46 = GraphTemporal` drops to test `PR-AUC = 0.3168`, and `E47 = GraphTemporalHybrid` falls further to `0.3126`. At the moment, this means that adding a graph-style market-interaction layer in its current form does not help, even though the simpler multi-market joint encoder does. The most reasonable interpretation is that cross-market context is valuable, but the current graph layer is not yet the right way to exploit it.
+
+So the benchmark picture is now:
+
+1. matched classical benchmark: `E44 LightGBM`, test `PR-AUC = 0.4139`
+2. strongest completed deep ensemble: `E35`, test `PR-AUC = 0.3691`
+3. strongest completed deep single model: `E45 GRUMultiMarket`, test `PR-AUC = 0.3880`
+
+The immediate next step should therefore be to finish `E48` and then treat `E45`, not `E46/E47`, as the main next-generation deep-learning line.
+
+### **Prepared follow-up experiments after `E45`**
+
+The next round should now focus on strengthening the successful multi-market line rather than continuing to push the first graph-layer variants.
+
+1. `E49`: repeated-seed `E45`.  
+   Goal: confirm that the `E45` gain is stable and not another single-run spike.
+2. `E50`: `GRUMultiMarketHybrid`.  
+   Goal: fuse the stronger multi-market sequence encoder with the repository's strongest handcrafted tabular branch.
+3. `E51`: mechanism-aware `GRUMultiMarketHybrid`.  
+   Goal: test whether `E31`-style mechanism features become more useful once the sequence branch already captures joint multi-market context.
+4. `E52`: deep-only late-fusion ensemble over `E45` and `E35`.  
+   Goal: combine the strongest completed multi-market single model with the strongest completed deep ensemble comparator.
+
+These four experiments are now implemented in code as the repository's prepared post-`E45` follow-up branch.
+
 ### **Workflow note for future rounds**
 
 For new experiment families after this point, the preferred order is:

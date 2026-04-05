@@ -730,6 +730,88 @@ if HAS_TORCH:
             return self.classifier(torch.cat(features, dim=1)).squeeze(1)
 
 
+    class GRUMultiMarketHybridClassifier(GRUMultiMarketClassifier):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            tabular_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            if tabular_dim <= 0:
+                raise ValueError("GRUMultiMarketHybridClassifier requires tabular_dim > 0.")
+            super().__init__(
+                input_dim=input_dim,
+                use_country_embedding=use_country_embedding,
+                num_countries=num_countries,
+                embedding_dim=embedding_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+            fusion_in = self.classifier[0].in_features
+            self.sequence_projection = nn.Sequential(
+                nn.Linear(fusion_in, 64),
+                nn.ReLU(),
+            )
+            self.tabular_encoder = nn.Sequential(
+                nn.Linear(tabular_dim, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+            )
+            self.fusion_gate = nn.Sequential(
+                nn.Linear(fusion_in + 64, 64),
+                nn.Sigmoid(),
+            )
+            self.classifier = nn.Sequential(
+                nn.Linear(64, 64),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1),
+            )
+
+        def multi_market_features(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            market_x: torch.Tensor,
+            market_valid: torch.Tensor | None,
+        ) -> torch.Tensor:
+            target_features = self.encode_sequence(x)
+            market_states = self.encode_markets(market_x)
+            global_features = self.masked_mean(market_states, market_valid)
+            features = [target_features, global_features]
+            if self.use_country_embedding:
+                features.append(self.country_embedding(country_idx))
+            return torch.cat(features, dim=1)
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+            market_x: torch.Tensor | None = None,
+            market_valid: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if market_x is None:
+                raise ValueError("GRUMultiMarketHybridClassifier requires market_x.")
+            if tabular_x is None:
+                raise ValueError("GRUMultiMarketHybridClassifier requires tabular_x.")
+            sequence_features = self.multi_market_features(x, country_idx, market_x, market_valid)
+            projected_sequence = self.sequence_projection(sequence_features)
+            tabular_features = self.tabular_encoder(tabular_x)
+            gate = self.fusion_gate(torch.cat([sequence_features, tabular_features], dim=1))
+            fused = gate * projected_sequence + (1.0 - gate) * tabular_features
+            return self.classifier(fused).squeeze(1)
+
+
     class GraphTemporalClassifier(MultiMarketSequenceEncoder):  # pragma: no cover - exercised through integration tests
         def __init__(
             self,
@@ -1063,6 +1145,13 @@ def build_sequence_model(
     if model_name == "GRUMultiMarket":
         return GRUMultiMarketClassifier(
             input_dim=input_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GRUMultiMarketHybrid":
+        return GRUMultiMarketHybridClassifier(
+            input_dim=input_dim,
+            tabular_dim=tabular_dim,
             use_country_embedding=use_country_embedding,
             num_countries=num_countries,
         )

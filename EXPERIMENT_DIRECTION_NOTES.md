@@ -552,5 +552,79 @@ For a fuller write-up, see `LITERATURE_EXPERIMENT_GUIDE.md`.
 - `E45-E48` are now implemented as config defaults and executable through the standard runner
 - They should still be treated as pending next-generation experiments until they produce completed metrics
 
+## Actual outcome from `E40` and `E45-E47`
+
+- `E40` did not improve on the simpler `E35` ensemble
+- `E45` is the first next-generation deep result that clearly beats the previous deep benchmarks
+- `E46` and `E47` did not improve on `E45`; in their current form, explicit graph interaction is not yet helping
+- `E43` still remains blocked by missing `catboost` dependency
+- `E48` is still pending, so the stability of the graph-temporal hybrid branch is not yet known
+
+### Updated benchmark view
+
+- Current matched classical benchmark: `E44 LightGBM`, test `PR-AUC = 0.4139`
+- Current strongest completed deep ensemble: `E35`, test `PR-AUC = 0.3691`
+- Current strongest completed deep single model: `E45 GRUMultiMarket`, test `PR-AUC = 0.3880`
+
+### What changed
+
+- `E45` now becomes the main deep-learning single-model score target
+- `E35` should still be kept as the main completed deep ensemble benchmark
+- `E40` should not be prioritized further because cross-seed ensembling under the current family did not beat the already simpler and stronger `E35`
+- `E46` and `E47` should be treated as failed first-pass graph-temporal variants rather than promoted follow-ups
+
+### Why `E45` matters
+
+- `E45` is the first deep single model to break well above the old `E37 = 0.3494`
+- It also beats the completed deep ensemble `E35 = 0.3691`
+- This suggests that joint multi-market context is genuinely valuable
+- The result still trails the matched tree baselines, especially `E44`, so the deep-learning gap is smaller but not closed
+
+### Why `E46` and `E47` are not yet justified
+
+- `E46 GraphTemporal` dropped to test `PR-AUC = 0.3168`
+- `E47 GraphTemporalHybrid` dropped further to `0.3126`
+- Both show large validation-to-test deterioration relative to `E45`
+- The current evidence therefore does not justify further graph-layer complexity before revisiting the graph design itself
+
+### Updated recommended order
+
+1. Finish `E48`
+2. Re-run or repeat-seed `E45`
+3. Keep `E44` as the project-level matched classical reference
+4. Treat `E46/E47` as exploratory failures unless a materially different graph design is proposed
+
+## Prepared follow-up experiments after `E45`
+
+- `E49`: repeated-seed version of `E45`
+  Goal: verify that the multi-market gain is stable and not another single-run spike
+- `E50`: `E45` plus a gated handcrafted tabular branch
+  Goal: combine the new multi-market sequence gain with the strongest existing lag and rolling-stat summaries
+- `E51`: `E50` plus mechanism-aware engineered features
+  Goal: test whether the `E31`-style mechanism signals become more useful once the sequence branch already captures joint multi-market context
+- `E52`: late-fusion ensemble of `E45` and the strongest completed deep comparator
+  Goal: turn the new multi-market single-model line into a stronger deep benchmark without immediately mixing in classical models
+
+### Recommended order after the current evidence
+
+1. `E49`
+2. `E50`
+3. `E51`
+4. `E52`
+
+### Why this is the current best plan
+
+- `E45` is the first next-generation deep model that materially narrows the gap to the matched tree baselines
+- The most urgent unanswered question is whether `E45` is stable
+- If `E45` is stable, the most promising next move is not more graph complexity but adding back the strongest handcrafted information through a cleaner hybrid branch
+- A final deep-only ensemble is justified only after the single-model line is stabilized and strengthened
+
+### Implementation status
+
+- `E49-E52` are now implemented as runnable config defaults in the repository
+- `E49` should be interpreted as the first priority stability check for the `E45` line
+- `E50/E51` are the main architecture follow-ups because they test whether the new multi-market sequence gain can be combined with the strongest handcrafted summaries
+- `E52` is the prepared deep-only ensemble branch for the post-`E45` family
+
 ## Maintenance rule
 - Whenever a materially new direction judgment is made, update this file so later threads can see the latest recommended roadmap.

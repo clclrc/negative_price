@@ -266,3 +266,35 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertTrue(configs["E47"].use_mechanism_features)
         self.assertTrue(configs["E48"].use_mechanism_features)
         self.assertEqual(configs["E48"].repeat_random_seeds, (42, 52, 62))
+
+    def test_default_configs_include_e45_centered_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E49", "E50", "E51", "E52"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E45"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+
+        self.assertEqual(configs["E49"].models, ("GRUMultiMarket",))
+        self.assertEqual(configs["E49"].repeat_random_seeds, (42, 52, 62))
+        self.assertEqual(configs["E49"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E49"].sequence_max_epochs, 100)
+        self.assertEqual(configs["E49"].sequence_patience, 15)
+
+        self.assertEqual(configs["E50"].models, ("GRUMultiMarketHybrid",))
+        self.assertFalse(configs["E50"].use_mechanism_features)
+        self.assertEqual(configs["E50"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E50"].sequence_max_epochs, 100)
+        self.assertEqual(configs["E50"].sequence_patience, 15)
+
+        self.assertEqual(configs["E51"].models, ("GRUMultiMarketHybrid",))
+        self.assertTrue(configs["E51"].use_mechanism_features)
+        self.assertEqual(configs["E51"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E51"].sequence_max_epochs, 100)
+        self.assertEqual(configs["E51"].sequence_patience, 15)
+
+        self.assertEqual(configs["E52"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E52"].meta_members, ("E45", "E35"))
+        self.assertEqual(configs["E52"].models, ())

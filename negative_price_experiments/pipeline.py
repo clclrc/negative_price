@@ -68,8 +68,15 @@ XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES = (
     {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 400, "calibration": "isotonic"},
     {"max_depth": 6, "learning_rate": 0.1, "n_estimators": 250, "calibration": "isotonic"},
 )
-HYBRID_SEQUENCE_MODELS = ("GRUHybrid", "GRUHybridAttn", "GRUHybridGated", "GRUHybridGatedMultiTask", "GraphTemporalHybrid")
-MULTI_MARKET_SEQUENCE_MODELS = ("GRUMultiMarket", "GraphTemporal", "GraphTemporalHybrid")
+HYBRID_SEQUENCE_MODELS = (
+    "GRUHybrid",
+    "GRUHybridAttn",
+    "GRUHybridGated",
+    "GRUHybridGatedMultiTask",
+    "GRUMultiMarketHybrid",
+    "GraphTemporalHybrid",
+)
+MULTI_MARKET_SEQUENCE_MODELS = ("GRUMultiMarket", "GRUMultiMarketHybrid", "GraphTemporal", "GraphTemporalHybrid")
 
 
 def run_experiment(

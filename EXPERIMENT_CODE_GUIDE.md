@@ -86,10 +86,14 @@ Extended experiment IDs:
 - `E46`: 20-market public-feature `GraphTemporal` experiment that adds a dense market-interaction layer on top of joint multi-market encodings, `window=168`, `h=6`
 - `E47`: 20-market public-feature `GraphTemporalHybrid` experiment that fuses graph-temporal market representations with mechanism-aware tabular features, `window=168`, `h=6`
 - `E48`: repeated-seed version of `E47` with aggregated metrics across multiple random seeds
+- `E49`: repeated-seed version of `E45` with aggregated metrics across multiple random seeds
+- `E50`: 20-market public-feature `GRUMultiMarketHybrid` experiment that fuses the multi-market sequence encoder with the strongest handcrafted tabular branch, `window=168`, `h=6`
+- `E51`: 20-market public-feature `GRUMultiMarketHybrid` experiment with mechanism-aware engineered tabular features, `window=168`, `h=6`
+- `E52`: validation-weighted late-fusion ensemble wrapper over `E45` and `E35`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, and `E48` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, `E48`, `E49`, `E50`, `E51`, and `E52` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -122,6 +126,10 @@ Important:
 - `E46` keeps the same multi-market data path as `E45` but adds a market-interaction layer to model cross-market state propagation
 - `E47` adds a gated fusion branch that combines graph-temporal market representations with the repository's strongest mechanism-aware tabular summaries
 - `E48` is the stability check for that graph-temporal hybrid line
+- `E49` is the stability check for the stronger `E45` multi-market baseline rather than the weaker graph branch
+- `E50` adds a gated handcrafted-feature branch to the `E45` multi-market encoder without changing the main forecasting task
+- `E51` keeps the `E50` architecture but upgrades the tabular branch with mechanism-aware engineered features
+- `E52` builds a deep-only ensemble between the strongest completed multi-market single model and the strongest completed deep ensemble comparator
 
 All default experiment definitions are created in:
 
