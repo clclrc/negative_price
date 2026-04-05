@@ -341,9 +341,10 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - Hybrid is no longer just a justification question; it is the strongest current next-step line
 - Missingness-aware `20-country` renewables remains exploratory rather than decisive
 
-## Current completed-round judgment after `E28`, `E32`, `E33`, and `E34`
+## Current completed-round judgment after `E28`, `E32`, `E33`, `E34`, `E35`, `E37`, and `E38`
 
-- `E30` is the strongest completed full-setup deep-learning result and should now be treated as the main score target
+- `E35` is now the strongest completed deep-learning result and should be treated as the main score benchmark
+- `E30` remains the strongest completed single-branch full-setup deep-learning result
 - `E31` is close enough to `E30`, and different enough in `precision` versus `recall`, that it should remain an active companion branch
 - `E25` shows the old `E23` line was not stable enough to treat a single run as fully representative
 - `E26` should not be prioritized further
@@ -351,8 +352,36 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E32` should not be prioritized further in its current form
 - `E33` confirms that the `E30` line is worth keeping, but it also raises the priority of stability-aware follow-up experiments
 - `E34` shows that the `E31` line is slightly weaker than `E33` on repeated-seed mean `PR-AUC`, but much more stable across seeds
-- `E35` is still incomplete, and its currently finished `E30` member rerun should not be mistaken for the late-fusion result itself
+- `E35` confirms that `E30` and `E31` are genuinely complementary under the same full setup, not just under isolated single runs
 - `E36` is still pending, so it should not yet be interpreted as a final direction change
+- `E37` shows that stability-oriented tuning helps the `E30` branch, but not enough to displace `E35`
+- `E38` does not give the same uplift to the `E31` mechanism-aware branch, so it should not be promoted over `E37` or `E35`
+
+### Actual outcome from `E35`
+
+- `E35` test `PR-AUC = 0.3691`, higher than both completed single branches:
+  `E30 = 0.3399`, `E31 = 0.3338`
+- On the matched `E35` reruns, the member models scored:
+  `E30 member = 0.3209`, `E31 member = 0.3574`
+- This means the late-fusion gain is real under the same rerun context, not just an artifact of comparing against older single-run outputs
+- The validation-time member weights are nearly balanced:
+  `E30 = 0.4869`, `E31 = 0.5131`
+- `E35` also raises `F1` to `0.3923`, higher than both `E30` and `E31`
+
+### Actual outcome from `E37`
+
+- `E37` test `PR-AUC = 0.3494`, which improves on the original `E30 = 0.3399`
+- `E37` also improves `precision` and `F1` over `E30`:
+  `precision 0.2503 vs 0.2099`, `F1 0.3646 vs 0.3277`
+- `E37` does not beat `E35 = 0.3691`, so stability tuning alone is weaker than the already confirmed ensemble gain
+- `E37` is still useful as a stronger single-branch baseline for any future comparisons against `E38`, `E39`, or `E40`
+
+### Actual outcome from `E38`
+
+- `E38` test `PR-AUC = 0.3297`, slightly below the original `E31 = 0.3338`
+- It does improve over the repeated-seed mean of `E34 = 0.3099`, so stability-oriented training is not useless for the mechanism-aware line
+- But unlike `E37`, it does not create a stronger completed single-branch reference
+- This means the mechanism-aware branch remains useful for ensemble diversity, but not as the best score-maximizing single model
 
 ## Next planned experiments around `E30` and `E31`
 
@@ -373,6 +402,28 @@ It is intended to help future threads and future agents avoid re-deciding the sa
 - `E34` answers whether the mechanism-aware `E31` gain is stable across seeds
 - `E35` answers whether the `E30` and `E31` branches are complementary enough to improve over either single model
 - `E36` answers whether the strongest current classifier can be made more decision-useful without sacrificing ranking quality
+
+### Updated priority after `E35`
+
+- `E36` is now more valuable, because calibration should be applied to a demonstrably stronger base candidate rather than to an uncertain branch
+- `E39` should now be treated as the highest-value pending follow-up after `E36`, because a simple weighted late-fusion already worked well
+- `E40` is more justified than before, because both branch diversity and seed diversity now look usable as ensemble assets
+- `E37` and `E38` remain worth keeping, but they move down one step in urgency because ensemble complementarity has already delivered a stronger score gain than stability tuning alone is likely to deliver
+
+### Updated priority after `E37`
+
+- `E37` validates that more conservative optimization is directionally useful for the `E30` family
+- This strengthens the case for keeping `E38`, but it does not change the top-level ordering
+- The recommended execution order remains:
+  `E36 -> E39 -> E40 -> E38`
+- `E37` itself should now be treated as completed evidence rather than as a pending follow-up
+
+### Updated priority after `E38`
+
+- `E38` should now be treated as completed evidence rather than as a pending follow-up
+- The recommended execution order is now:
+  `E36 -> E39 -> E40`
+- `E38` still supports the rationale for `E39` and `E40`, because it preserves branch diversity even without becoming a stronger standalone score line
 
 ### Implementation note
 

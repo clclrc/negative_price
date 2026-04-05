@@ -228,3 +228,18 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E40"].meta_kind, "cross_seed_ensemble")
         self.assertEqual(configs["E40"].meta_members, ("E33", "E34"))
         self.assertEqual(configs["E40"].models, ())
+
+    def test_default_configs_include_current_task_classical_baselines(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E41", "E42", "E43", "E44"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E30"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+
+        self.assertEqual(configs["E41"].models, ("LogisticRegression",))
+        self.assertEqual(configs["E42"].models, ("XGBoost",))
+        self.assertEqual(configs["E43"].models, ("CatBoost",))
+        self.assertEqual(configs["E44"].models, ("LightGBM",))

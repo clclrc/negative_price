@@ -307,12 +307,16 @@ Based on the completed `E25-E27` and `E29-E31` results, the evidence now support
 18. `E32` does not outperform `E30` or `E31`, so the current multi-task design should not be prioritized further.
 19. `E33` confirms that the `E30` line is genuinely strong, but it also shows non-trivial seed variance, so stability testing remains necessary.
 20. `E34` shows that the `E31` branch is slightly weaker than `E33` on repeated-seed mean `PR-AUC`, but much more stable across seeds.
-21. The currently finished `E35` member rerun of `E30` should not be interpreted as the `E35` late-fusion result itself.
-22. `E35-E36` are still pending and should be interpreted before any final ensemble or calibration judgment is locked in.
+21. `E35` is now completed and becomes the strongest finished deep-learning result, with test `PR-AUC = 0.3691`.
+22. `E35` is stronger than both single completed branches, `E30 = 0.3399` and `E31 = 0.3338`, so ensemble complementarity is now empirically confirmed.
+23. On the matched `E35` reruns, the members score `E30 = 0.3209` and `E31 = 0.3574`, so the late-fusion gain is real under the same rerun context.
+24. `E36` is still pending and should now be interpreted mainly as a calibration step on top of an already stronger ensemble benchmark.
+25. `E37` confirms that stability-oriented training helps the `E30` family, lifting test `PR-AUC` to `0.3494`, but it still does not beat `E35`.
+26. `E38` does not produce the same uplift for the mechanism-aware branch, with test `PR-AUC = 0.3297`, so it should not replace `E37` as the stronger single-branch follow-up.
 
 ## **Next experimental plan**
 
-The current active round should still focus on validating and exploiting the complementary strengths of `E30` and `E31`, rather than reopening older backbone choices.
+The current active round should now focus on exploiting the confirmed complementary strengths of `E30` and `E31`, rather than reopening older backbone choices.
 
 1. `E33`: repeated-seed version of `E30`.  
    Goal: verify whether the new main score target is stable across random seeds.
@@ -323,7 +327,7 @@ The current active round should still focus on validating and exploiting the com
 4. `E36`: probability calibration branch built on the strongest available completed classifier among `E30`, `E31`, and `E35`.  
    Goal: improve decision usefulness and probability quality without sacrificing ranking quality.
 
-At the moment, the newly completed `E34` result does not justify changing this order. It reinforces the need for `E35`, because `E31` still offers a more stable repeated-seed profile even though `E33` keeps a slightly higher repeated-seed mean.
+At the moment, the newly completed `E35`, `E37`, and `E38` results imply: `E35` should still be treated as the main deep-learning benchmark, `E37` should remain the stronger single-branch reference for future comparisons, `E36` becomes more valuable as a calibration follow-up, and stacking or cross-seed ensemble follow-ups remain more justified than pure stability tuning alone.
 
 ### **Current implementation status**
 
@@ -331,7 +335,8 @@ The repository already contains implemented config defaults for `E29-E40`, but t
 
 1. `E28`, `E29`, `E30`, `E31`, `E32`, and `E33`: completed and informative.
 2. `E34`: completed and informative.
-3. `E35-E40`: implemented, but still pending or not yet interpreted.
+3. `E35`, `E37`, and `E38`: completed and informative.
+4. `E36`, `E39`, and `E40`: implemented, but still pending or not yet interpreted.
 
 ### **Workflow note for future rounds**
 

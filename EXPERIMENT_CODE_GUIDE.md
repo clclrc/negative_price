@@ -78,10 +78,14 @@ Extended experiment IDs:
 - `E38`: stability-tuned `E31` with the same stability-oriented training changes
 - `E39`: stacking ensemble wrapper over `E30` and `E31` using validation-time member predictions as stacker inputs
 - `E40`: cross-seed ensemble wrapper over `E33` and `E34` that turns repeated-seed diversity into weighted ensemble members
+- `E41`: 20-market public-feature `LogisticRegression` baseline under the current main task setup, `window=168`, `h=6`
+- `E42`: 20-market public-feature `XGBoost` baseline under the current main task setup, `window=168`, `h=6`
+- `E43`: 20-market public-feature `CatBoost` baseline under the current main task setup, `window=168`, `h=6`
+- `E44`: 20-market public-feature `LightGBM` baseline under the current main task setup, `window=168`, `h=6`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, and `E40` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, and `E44` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -109,6 +113,7 @@ Important:
 - `E38` applies the same stability-oriented training changes to the `E31` mechanism-aware branch
 - `E39` trains `E30` and `E31` as members and fits a small logistic-regression stacker on their validation-time probabilities
 - `E40` trains or reuses `E33` and `E34`, expands their raw seed members, and builds a validation-`PR-AUC`-weighted cross-seed ensemble
+- `E41-E44` are matched classical baselines for the current main task, using the same `20-country + public + window=168 + h=6` problem definition with tabular lag and rolling-stat features
 
 All default experiment definitions are created in:
 

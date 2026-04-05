@@ -703,6 +703,42 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             meta_members=("E33", "E34"),
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
         ),
+        "E41": ExperimentConfig(
+            name="E41",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("LogisticRegression",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E42": ExperimentConfig(
+            name="E42",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("XGBoost",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E43": ExperimentConfig(
+            name="E43",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("CatBoost",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E44": ExperimentConfig(
+            name="E44",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("LightGBM",),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
     }
 
 
