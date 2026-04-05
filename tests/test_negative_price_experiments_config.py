@@ -243,3 +243,26 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E42"].models, ("XGBoost",))
         self.assertEqual(configs["E43"].models, ("CatBoost",))
         self.assertEqual(configs["E44"].models, ("LightGBM",))
+
+    def test_default_configs_include_graph_temporal_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E45", "E46", "E47", "E48"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E30"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+            self.assertEqual(configs[name].sequence_learning_rate, 5e-4)
+            self.assertEqual(configs[name].sequence_max_epochs, 80)
+            self.assertEqual(configs[name].sequence_patience, 12)
+
+        self.assertEqual(configs["E45"].models, ("GRUMultiMarket",))
+        self.assertEqual(configs["E46"].models, ("GraphTemporal",))
+        self.assertEqual(configs["E47"].models, ("GraphTemporalHybrid",))
+        self.assertEqual(configs["E48"].models, ("GraphTemporalHybrid",))
+        self.assertFalse(configs["E45"].use_mechanism_features)
+        self.assertFalse(configs["E46"].use_mechanism_features)
+        self.assertTrue(configs["E47"].use_mechanism_features)
+        self.assertTrue(configs["E48"].use_mechanism_features)
+        self.assertEqual(configs["E48"].repeat_random_seeds, (42, 52, 62))

@@ -440,6 +440,50 @@ class NegativePriceRunnerTest(unittest.TestCase):
             self.assertIn("[SEQ][GRU][F1] sequence training start", log_output)
             self.assertIn("[SEQ][GRU][Final] final training completed", log_output)
 
+    @unittest.skipUnless(HAS_TORCH, "torch is required for graph-temporal smoke tests")
+    def test_graph_temporal_hybrid_smoke_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            config = ExperimentConfig(
+                name="GRAPHSEQ",
+                data_path=data_path,
+                countries=("AT", "BE"),
+                feature_group="public",
+                window_hours=12,
+                horizon_hours=1,
+                models=("GraphTemporalHybrid",),
+                split_strategy="unit",
+                ffill_limit=3,
+                primary_metric="pr_auc",
+                random_seed=42,
+                sequence_max_epochs=1,
+                sequence_patience=1,
+                use_mechanism_features=True,
+            )
+            folds = (
+                WalkForwardFold(
+                    "F1",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-03 12:00:00")),
+                    TimeRange(utc_ts("2024-01-03 12:00:00"), utc_ts("2024-01-04 12:00:00")),
+                ),
+            )
+
+            artifacts = run_experiment(
+                config,
+                output_dir=out_dir,
+                folds=folds,
+                final_train_range=TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-04 12:00:00")),
+                final_test_range=TimeRange(utc_ts("2024-01-04 12:00:00"), utc_ts("2024-01-05 12:00:00")),
+            )
+
+            metrics = pd.read_csv(artifacts["metrics_summary"])
+            self.assertIn("GraphTemporalHybrid", set(metrics["model"]))
+            self.assertTrue(Path(artifacts["progress_log"]).exists())
+
     def test_transfer_run_prints_country_budget_and_protocol_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

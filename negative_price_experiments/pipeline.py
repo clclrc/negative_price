@@ -68,7 +68,8 @@ XGBOOST_WEIGHTED_CALIBRATED_CANDIDATES = (
     {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 400, "calibration": "isotonic"},
     {"max_depth": 6, "learning_rate": 0.1, "n_estimators": 250, "calibration": "isotonic"},
 )
-HYBRID_SEQUENCE_MODELS = ("GRUHybrid", "GRUHybridAttn", "GRUHybridGated", "GRUHybridGatedMultiTask")
+HYBRID_SEQUENCE_MODELS = ("GRUHybrid", "GRUHybridAttn", "GRUHybridGated", "GRUHybridGatedMultiTask", "GraphTemporalHybrid")
+MULTI_MARKET_SEQUENCE_MODELS = ("GRUMultiMarket", "GraphTemporal", "GraphTemporalHybrid")
 
 
 def run_experiment(
@@ -1651,7 +1652,7 @@ def _evaluate_model_across_folds(
         return _evaluate_catboost(prepared, config, folds, reporter=reporter)
     if model_name == "XGBoostWeightedCalibrated":
         return _evaluate_xgboost_weighted_calibrated(prepared, config, folds, reporter=reporter)
-    if model_name in ("GRU", "TCN", "PatchTST", *HYBRID_SEQUENCE_MODELS):
+    if model_name in ("GRU", "TCN", "PatchTST", *HYBRID_SEQUENCE_MODELS, *MULTI_MARKET_SEQUENCE_MODELS):
         return _evaluate_sequence_model(prepared, config, model_name, folds, reporter=reporter)
     raise ValueError(f"Unsupported model: {model_name}")
 
@@ -1664,9 +1665,20 @@ def _build_sequence_train_eval_datasets(
     eval_samples: pd.DataFrame,
 ):
     scaler = prepared.fit_sequence_scaler(train_samples)
+    include_multi_market = model_name in MULTI_MARKET_SEQUENCE_MODELS
     if model_name not in HYBRID_SEQUENCE_MODELS:
-        train_ds = prepared.build_sequence_dataset(train_samples, scaler, include_country=config.use_country_features)
-        eval_ds = prepared.build_sequence_dataset(eval_samples, scaler, include_country=config.use_country_features)
+        train_ds = prepared.build_sequence_dataset(
+            train_samples,
+            scaler,
+            include_country=config.use_country_features,
+            include_multi_market=include_multi_market,
+        )
+        eval_ds = prepared.build_sequence_dataset(
+            eval_samples,
+            scaler,
+            include_country=config.use_country_features,
+            include_multi_market=include_multi_market,
+        )
         return scaler, train_ds, eval_ds
 
     train_bundle = prepared.build_tabular_bundle(train_samples, include_country=config.use_country_features)
@@ -1676,12 +1688,14 @@ def _build_sequence_train_eval_datasets(
         train_samples,
         scaler,
         include_country=config.use_country_features,
+        include_multi_market=include_multi_market,
         tabular_values=tabular_scaler.transform(train_bundle.X),
     )
     eval_ds = prepared.build_sequence_dataset(
         eval_samples,
         scaler,
         include_country=config.use_country_features,
+        include_multi_market=include_multi_market,
         tabular_values=tabular_scaler.transform(eval_bundle.X),
     )
     return scaler, train_ds, eval_ds

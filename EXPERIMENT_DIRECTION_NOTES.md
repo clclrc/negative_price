@@ -507,5 +507,50 @@ For a fuller write-up, see `LITERATURE_EXPERIMENT_GUIDE.md`.
 - Instead, it suggests that the highest-value next gains are more likely to come from probability quality, label design, and mechanism-aligned feature construction than from backbone churn
 - This aligns with the strongest empirical signals already observed in this repository
 
+## Latest benchmark judgment after `E35-E44`
+
+- The matched current-task classical benchmark is now `E44`, not the older `E8`
+- `E44 LightGBM` achieved test `PR-AUC = 0.4139`
+- `E42 XGBoost` is close behind at `0.4066` and currently gives the strongest same-task threshold `F1`
+- `E35` remains the strongest completed deep benchmark at `0.3691`
+- `E37` remains the strongest completed single deep branch at `0.3494`
+- `E36` and `E39` should not be prioritized further for score-maximization under the current setup
+- `E43` still needs a dependency-complete rerun before it can be interpreted
+
+### What this changes
+
+- The main score gap is now between the best deep line and the matched current-task tree baselines
+- Because `E35` already proved branch-level complementarity, the next deep-learning family should aim to learn information that the tabular tree baselines do not already exploit as well
+- The strongest next bet is therefore a multi-market graph-temporal hybrid rather than more calibration, stacking, or stability-only follow-up on the current single-market family
+
+## Prepared next-generation deep family: `E45-E48`
+
+- `E45`: `GRUMultiMarket`
+  Goal: verify whether jointly encoding all markets at the same anchor time helps even before explicit market-interaction layers are added
+- `E46`: `GraphTemporal`
+  Goal: test whether a market-interaction layer improves on simple joint multi-market pooling
+- `E47`: `GraphTemporalHybrid`
+  Goal: fuse graph-temporal market representations with the current strongest mechanism-aware handcrafted branch
+- `E48`: repeated-seed version of `E47`
+  Goal: check whether any graph-temporal gain is stable enough to treat as a genuine next-generation deep line
+
+### Recommended order after the current completed evidence
+
+1. `E45`
+2. `E46`
+3. `E47`
+4. `E48`
+
+### Why this is now the right order
+
+- `E35` already answered the simpler complementarity question inside the current `E30/E31` family
+- `E37` and `E38` showed that stability tuning is useful but not transformative
+- `E44` showed that the matched classical baselines are still clearly ahead, so the next deep experiments need to capture cross-market structure rather than only retune single-market encoders
+
+### Implementation note
+
+- `E45-E48` are now implemented as config defaults and executable through the standard runner
+- They should still be treated as pending next-generation experiments until they produce completed metrics
+
 ## Maintenance rule
 - Whenever a materially new direction judgment is made, update this file so later threads can see the latest recommended roadmap.

@@ -613,6 +613,254 @@ if HAS_TORCH:
             return logits, aux
 
 
+    class DenseMarketGraphLayer(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(self, hidden_size: int, dropout: float = 0.2) -> None:
+            super().__init__()
+            self.query = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.key = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.value = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.output = nn.Linear(hidden_size, hidden_size)
+            self.dropout = nn.Dropout(dropout)
+            self.norm = nn.LayerNorm(hidden_size)
+            self.scale = hidden_size**0.5
+
+        def forward(self, node_states: torch.Tensor, market_valid: torch.Tensor | None = None) -> torch.Tensor:
+            query = self.query(node_states)
+            key = self.key(node_states)
+            value = self.value(node_states)
+            scores = torch.matmul(query, key.transpose(1, 2)) / self.scale
+            if market_valid is not None:
+                node_mask = market_valid > 0.5
+                pair_mask = node_mask.unsqueeze(1) & node_mask.unsqueeze(2)
+                scores = scores.masked_fill(~pair_mask, -1e9)
+            attention = torch.softmax(scores, dim=-1)
+            if market_valid is not None:
+                valid = market_valid.unsqueeze(1)
+                attention = attention * valid
+                attention = attention / attention.sum(dim=-1, keepdim=True).clamp(min=1e-6)
+            updated = torch.matmul(self.dropout(attention), value)
+            return self.norm(node_states + self.output(updated))
+
+
+    class MultiMarketSequenceEncoder(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__()
+            self.hidden_size = hidden_size
+            self.gru = nn.GRU(
+                input_size=input_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0.0,
+            )
+
+        def encode_sequence(self, x: torch.Tensor) -> torch.Tensor:
+            _, hidden = self.gru(x)
+            return hidden[-1]
+
+        def encode_markets(self, market_x: torch.Tensor) -> torch.Tensor:
+            batch_size, num_markets, seq_len, input_dim = market_x.shape
+            flat = market_x.view(batch_size * num_markets, seq_len, input_dim)
+            encoded = self.encode_sequence(flat)
+            return encoded.view(batch_size, num_markets, self.hidden_size)
+
+        @staticmethod
+        def masked_mean(states: torch.Tensor, market_valid: torch.Tensor | None) -> torch.Tensor:
+            if market_valid is None:
+                return states.mean(dim=1)
+            weights = market_valid.unsqueeze(-1)
+            return (states * weights).sum(dim=1) / weights.sum(dim=1).clamp(min=1e-6)
+
+
+    class GRUMultiMarketClassifier(MultiMarketSequenceEncoder):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__(
+                input_dim=input_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+            self.use_country_embedding = use_country_embedding
+            if use_country_embedding:
+                self.country_embedding = nn.Embedding(num_countries, embedding_dim)
+                classifier_in = hidden_size * 2 + embedding_dim
+            else:
+                self.country_embedding = None
+                classifier_in = hidden_size * 2
+            self.classifier = nn.Sequential(
+                nn.Linear(classifier_in, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 1),
+            )
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+            market_x: torch.Tensor | None = None,
+            market_valid: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if market_x is None:
+                raise ValueError("GRUMultiMarketClassifier requires market_x.")
+            target_features = self.encode_sequence(x)
+            market_states = self.encode_markets(market_x)
+            global_features = self.masked_mean(market_states, market_valid)
+            features = [target_features, global_features]
+            if self.use_country_embedding:
+                features.append(self.country_embedding(country_idx))
+            return self.classifier(torch.cat(features, dim=1)).squeeze(1)
+
+
+    class GraphTemporalClassifier(MultiMarketSequenceEncoder):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__(
+                input_dim=input_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+            self.use_country_embedding = use_country_embedding
+            self.graph_layer = DenseMarketGraphLayer(hidden_size, dropout=dropout)
+            if use_country_embedding:
+                self.country_embedding = nn.Embedding(num_countries, embedding_dim)
+                fusion_in = hidden_size * 3 + embedding_dim
+            else:
+                self.country_embedding = None
+                fusion_in = hidden_size * 3
+            self.classifier = nn.Sequential(
+                nn.Linear(fusion_in, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 1),
+            )
+
+        def graph_features(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            market_x: torch.Tensor,
+            market_valid: torch.Tensor | None,
+        ) -> torch.Tensor:
+            target_features = self.encode_sequence(x)
+            market_states = self.encode_markets(market_x)
+            graph_states = self.graph_layer(market_states, market_valid)
+            target_graph = graph_states[torch.arange(graph_states.shape[0], device=graph_states.device), country_idx.clamp(min=0)]
+            global_graph = self.masked_mean(graph_states, market_valid)
+            features = [target_features, target_graph, global_graph]
+            if self.use_country_embedding:
+                features.append(self.country_embedding(country_idx))
+            return torch.cat(features, dim=1)
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+            market_x: torch.Tensor | None = None,
+            market_valid: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if market_x is None:
+                raise ValueError("GraphTemporalClassifier requires market_x.")
+            features = self.graph_features(x, country_idx, market_x, market_valid)
+            return self.classifier(features).squeeze(1)
+
+
+    class GraphTemporalHybridClassifier(GraphTemporalClassifier):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            tabular_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            if tabular_dim <= 0:
+                raise ValueError("GraphTemporalHybridClassifier requires tabular_dim > 0.")
+            super().__init__(
+                input_dim=input_dim,
+                use_country_embedding=use_country_embedding,
+                num_countries=num_countries,
+                embedding_dim=embedding_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+            fusion_in = self.classifier[0].in_features
+            self.graph_projection = nn.Sequential(
+                nn.Linear(fusion_in, 64),
+                nn.ReLU(),
+            )
+            self.tabular_encoder = nn.Sequential(
+                nn.Linear(tabular_dim, 128),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+            )
+            self.fusion_gate = nn.Sequential(
+                nn.Linear(fusion_in + 64, 64),
+                nn.Sigmoid(),
+            )
+            self.classifier = nn.Sequential(
+                nn.Linear(64, 64),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1),
+            )
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+            market_x: torch.Tensor | None = None,
+            market_valid: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if market_x is None:
+                raise ValueError("GraphTemporalHybridClassifier requires market_x.")
+            if tabular_x is None:
+                raise ValueError("GraphTemporalHybridClassifier requires tabular_x.")
+            graph_features = self.graph_features(x, country_idx, market_x, market_valid)
+            projected_graph = self.graph_projection(graph_features)
+            tabular_features = self.tabular_encoder(tabular_x)
+            gate = self.fusion_gate(torch.cat([graph_features, tabular_features], dim=1))
+            fused = gate * projected_graph + (1.0 - gate) * tabular_features
+            return self.classifier(fused).squeeze(1)
+
+
     class TemporalBlock(nn.Module):  # pragma: no cover - exercised through integration tests
         def __init__(self, in_channels: int, out_channels: int, kernel_size: int, dilation: int, dropout: float) -> None:
             super().__init__()
@@ -812,6 +1060,25 @@ def build_sequence_model(
             use_country_embedding=use_country_embedding,
             num_countries=num_countries,
         )
+    if model_name == "GRUMultiMarket":
+        return GRUMultiMarketClassifier(
+            input_dim=input_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GraphTemporal":
+        return GraphTemporalClassifier(
+            input_dim=input_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GraphTemporalHybrid":
+        return GraphTemporalHybridClassifier(
+            input_dim=input_dim,
+            tabular_dim=tabular_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
     if model_name == "TCN":
         return TCNClassifier(
             input_dim=input_dim,
@@ -872,10 +1139,20 @@ def _split_model_outputs(output):
 
 
 def _forward_model_outputs(model: nn.Module, batch: dict[str, torch.Tensor], device: "torch.device") -> tuple["torch.Tensor", "torch.Tensor | None"]:
+    kwargs = {
+        "x": batch["x"].to(device),
+        "country_idx": batch["country_idx"].to(device),
+    }
     tabular_x = batch.get("tabular_x")
-    if tabular_x is None:
-        return _split_model_outputs(model(batch["x"].to(device), batch["country_idx"].to(device)))
-    return _split_model_outputs(model(batch["x"].to(device), batch["country_idx"].to(device), tabular_x.to(device)))
+    if tabular_x is not None:
+        kwargs["tabular_x"] = tabular_x.to(device)
+    market_x = batch.get("market_x")
+    if market_x is not None:
+        kwargs["market_x"] = market_x.to(device)
+    market_valid = batch.get("market_valid")
+    if market_valid is not None:
+        kwargs["market_valid"] = market_valid.to(device)
+    return _split_model_outputs(model(**kwargs))
 
 
 def _forward_model(model: nn.Module, batch: dict[str, torch.Tensor], device: "torch.device") -> "torch.Tensor":

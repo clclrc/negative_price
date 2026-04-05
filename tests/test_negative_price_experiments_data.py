@@ -293,3 +293,39 @@ class NegativePriceDataPrepTest(unittest.TestCase):
 
         self.assertIn("aux_y", item)
         self.assertIn("tabular_x", item)
+
+    def test_sequence_dataset_can_expose_multi_market_context(self) -> None:
+        df = pd.concat([build_toy_frame(periods=18, country="AT"), build_toy_frame(periods=18, country="BE")], ignore_index=True)
+        path = self.write_frame(df)
+        config = ExperimentConfig(
+            name="GRAPH",
+            data_path=path,
+            countries=("AT", "BE"),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("GraphTemporal",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+        )
+
+        prepared = prepare_experiment_data(config)
+        samples = prepared.sample_manifest.loc[prepared.sample_manifest["country"] == "AT"].head(2).copy()
+        scaler = prepared.fit_sequence_scaler(samples)
+        sequence_ds = prepared.build_sequence_dataset(
+            samples,
+            scaler,
+            include_country=True,
+            include_multi_market=True,
+        )
+
+        item = sequence_ds[0]
+
+        self.assertIn("market_x", item)
+        self.assertIn("market_valid", item)
+        self.assertEqual(item["market_x"].shape[0], 2)
+        self.assertEqual(item["market_x"].shape[1], 6)
+        self.assertEqual(item["market_valid"].shape[0], 2)
+        self.assertTrue(np.all(item["market_valid"] >= 0.0))

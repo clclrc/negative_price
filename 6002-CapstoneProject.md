@@ -329,6 +329,8 @@ The current active round should now focus on exploiting the confirmed complement
 
 At the moment, the newly completed `E35`, `E37`, and `E38` results imply: `E35` should still be treated as the main deep-learning benchmark, `E37` should remain the stronger single-branch reference for future comparisons, `E36` becomes more valuable as a calibration follow-up, and stacking or cross-seed ensemble follow-ups remain more justified than pure stability tuning alone.
 
+With the matched current-task machine-learning baselines now available, the score picture is clearer: `E44 LightGBM` is the strongest matched classical benchmark at test `PR-AUC = 0.4139`, `E42 XGBoost` is close at `0.4066`, while the strongest completed deep result remains `E35 = 0.3691`. This means the next deep-learning family should stop focusing on single-market retuning alone and instead test whether explicit cross-market structure can close more of the gap.
+
 ### **Current implementation status**
 
 The repository already contains implemented config defaults for `E29-E40`, but the current round should still be interpreted as:
@@ -337,6 +339,21 @@ The repository already contains implemented config defaults for `E29-E40`, but t
 2. `E34`: completed and informative.
 3. `E35`, `E37`, and `E38`: completed and informative.
 4. `E36`, `E39`, and `E40`: implemented, but still pending or not yet interpreted.
+
+### **Prepared next-generation deep family**
+
+The next deep-learning family after the current `E30-E40` line should be centered on multi-market and graph-temporal structure:
+
+1. `E45`: `GRUMultiMarket`.  
+   Goal: jointly encode all markets at the same anchor time before adding any explicit interaction layer.
+2. `E46`: `GraphTemporal`.  
+   Goal: add a market-interaction layer on top of those multi-market encodings and test whether explicit cross-market propagation helps.
+3. `E47`: `GraphTemporalHybrid`.  
+   Goal: fuse graph-temporal market representations with the strongest mechanism-aware handcrafted branch.
+4. `E48`: repeated-seed `E47`.  
+   Goal: verify that any graph-temporal gain is stable enough to justify promoting this family.
+
+These four experiments are now implemented in code as the repository's prepared next-generation deep-learning branch.
 
 ### **Workflow note for future rounds**
 

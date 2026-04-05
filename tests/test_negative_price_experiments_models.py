@@ -76,6 +76,30 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
         self.assertEqual(gated.__class__.__name__, "GRUHybridGatedClassifier")
         self.assertEqual(multitask.__class__.__name__, "GRUHybridGatedMultiTaskClassifier")
 
+    def test_builds_graph_temporal_sequence_models(self) -> None:
+        multi_market = build_sequence_model(
+            "GRUMultiMarket",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+        )
+        graph_temporal = build_sequence_model(
+            "GraphTemporal",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+        )
+        graph_hybrid = build_sequence_model(
+            "GraphTemporalHybrid",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        self.assertEqual(multi_market.__class__.__name__, "GRUMultiMarketClassifier")
+        self.assertEqual(graph_temporal.__class__.__name__, "GraphTemporalClassifier")
+        self.assertEqual(graph_hybrid.__class__.__name__, "GraphTemporalHybridClassifier")
+
     def test_multitask_hybrid_forward_returns_logits_and_auxiliary_output(self) -> None:
         model = build_sequence_model(
             "GRUHybridGatedMultiTask",
@@ -94,6 +118,31 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
         self.assertEqual(tuple(aux.shape), (2,))
         self.assertTrue(torch.isfinite(logits).all())
         self.assertTrue(torch.isfinite(aux).all())
+
+    def test_graph_temporal_hybrid_forward_returns_finite_logits(self) -> None:
+        model = build_sequence_model(
+            "GraphTemporalHybrid",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+            tabular_dim=6,
+        )
+        x = torch.randn(2, 8, 4)
+        market_x = torch.randn(2, 3, 8, 4)
+        market_valid = torch.tensor([[1.0, 1.0, 1.0], [1.0, 0.0, 1.0]], dtype=torch.float32)
+        country_idx = torch.tensor([0, 2], dtype=torch.long)
+        tabular_x = torch.randn(2, 6)
+
+        logits = model(
+            x=x,
+            country_idx=country_idx,
+            tabular_x=tabular_x,
+            market_x=market_x,
+            market_valid=market_valid,
+        )
+
+        self.assertEqual(tuple(logits.shape), (2,))
+        self.assertTrue(torch.isfinite(logits).all())
 
 
 @unittest.skipUnless(HAS_TORCH, "torch is required for focal loss tests")

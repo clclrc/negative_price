@@ -98,7 +98,16 @@ CORE_TABULAR_MODELS = ("Majority", "LogisticRegression", "XGBoost")
 ADVANCED_TABULAR_MODELS = ("LightGBM", "CatBoost", "XGBoostWeightedCalibrated")
 TABULAR_MODELS = CORE_TABULAR_MODELS + ADVANCED_TABULAR_MODELS
 CORE_SEQUENCE_MODELS = ("GRU", "TCN")
-ADVANCED_SEQUENCE_MODELS = ("PatchTST", "GRUHybrid", "GRUHybridAttn", "GRUHybridGated", "GRUHybridGatedMultiTask")
+ADVANCED_SEQUENCE_MODELS = (
+    "PatchTST",
+    "GRUHybrid",
+    "GRUHybridAttn",
+    "GRUHybridGated",
+    "GRUHybridGatedMultiTask",
+    "GRUMultiMarket",
+    "GraphTemporal",
+    "GraphTemporalHybrid",
+)
 SEQUENCE_MODELS = CORE_SEQUENCE_MODELS + ADVANCED_SEQUENCE_MODELS
 DEFAULT_MODELS = CORE_TABULAR_MODELS + CORE_SEQUENCE_MODELS
 
@@ -738,6 +747,58 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             horizon_hours=6,
             models=("LightGBM",),
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E45": ExperimentConfig(
+            name="E45",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GRUMultiMarket",),
+            sequence_learning_rate=5e-4,
+            sequence_max_epochs=80,
+            sequence_patience=12,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E46": ExperimentConfig(
+            name="E46",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GraphTemporal",),
+            sequence_learning_rate=5e-4,
+            sequence_max_epochs=80,
+            sequence_patience=12,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E47": ExperimentConfig(
+            name="E47",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GraphTemporalHybrid",),
+            sequence_learning_rate=5e-4,
+            sequence_max_epochs=80,
+            sequence_patience=12,
+            use_mechanism_features=True,
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
+        "E48": ExperimentConfig(
+            name="E48",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=("GraphTemporalHybrid",),
+            sequence_learning_rate=5e-4,
+            sequence_max_epochs=80,
+            sequence_patience=12,
+            use_mechanism_features=True,
+            random_seed=42,
+            repeat_random_seeds=(42, 52, 62),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours", "random_seed"}},
         ),
     }
 

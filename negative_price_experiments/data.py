@@ -87,15 +87,28 @@ class SequenceDataset:
         scaler: NumericScaler,
         *,
         include_country: bool,
+        include_multi_market: bool = False,
         tabular_values: np.ndarray | None = None,
     ) -> None:
         self.prepared = prepared
         self.samples = samples.reset_index(drop=True).copy()
         self.scaler = scaler
         self.include_country = include_country
+        self.include_multi_market = include_multi_market
         if tabular_values is not None and len(tabular_values) != len(self.samples):
             raise ValueError("tabular_values must align with samples.")
         self.tabular_values = tabular_values.astype(np.float32, copy=False) if tabular_values is not None else None
+        self.sequence_arrays = {
+            country: np.concatenate(
+                [
+                    scaler.transform(panel.numeric_values),
+                    panel.missing_masks.astype(np.float32),
+                    panel.context_values.astype(np.float32),
+                ],
+                axis=1,
+            ).astype(np.float32)
+            for country, panel in self.prepared.country_panels.items()
+        }
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -105,11 +118,7 @@ class SequenceDataset:
         panel = self.prepared.country_panels[row["country"]]
         anchor_idx = int(row["anchor_index"])
         window_slice = slice(anchor_idx - self.prepared.config.window_hours + 1, anchor_idx + 1)
-        numeric = panel.numeric_values[window_slice]
-        x_numeric = self.scaler.transform(numeric)
-        x_mask = panel.missing_masks[window_slice].astype(np.float32)
-        x_context = panel.context_values[window_slice].astype(np.float32)
-        x = np.concatenate([x_numeric, x_mask, x_context], axis=1).astype(np.float32)
+        x = self.sequence_arrays[row["country"]][window_slice].astype(np.float32)
         country_idx = self.prepared.country_to_index.get(row["country"], -1) if self.include_country else -1
         item = {
             "x": x,
@@ -120,9 +129,31 @@ class SequenceDataset:
             if self.tabular_values is not None
             else {}
         )
+        if self.include_multi_market:
+            market_x, market_valid = self._build_multi_market_tensor(row["anchor_time"])
+            item["market_x"] = market_x
+            item["market_valid"] = market_valid
         if self.prepared.config.sequence_aux_target == "target_price":
             item["aux_y"] = np.float32(row["target_price"])
         return item
+
+    def _build_multi_market_tensor(self, anchor_time) -> tuple[np.ndarray, np.ndarray]:
+        anchor_key = pd.Timestamp(anchor_time).value
+        num_markets = len(self.prepared.config.countries)
+        feature_dim = len(self.prepared.sequence_feature_names)
+        market_x = np.zeros(
+            (num_markets, self.prepared.config.window_hours, feature_dim),
+            dtype=np.float32,
+        )
+        market_valid = np.zeros(num_markets, dtype=np.float32)
+        for market_idx, country in enumerate(self.prepared.config.countries):
+            anchor_idx = self.prepared.country_time_to_index[country].get(anchor_key)
+            if anchor_idx is None or anchor_idx < self.prepared.config.window_hours - 1:
+                continue
+            window_slice = slice(anchor_idx - self.prepared.config.window_hours + 1, anchor_idx + 1)
+            market_x[market_idx] = self.sequence_arrays[country][window_slice]
+            market_valid[market_idx] = 1.0
+        return market_x, market_valid
 
     @property
     def metadata(self) -> pd.DataFrame:
@@ -135,6 +166,10 @@ class PreparedExperimentData:
         self.country_panels = country_panels
         self.sample_manifest = sample_manifest.reset_index(drop=True)
         self.country_to_index = {country: idx for idx, country in enumerate(config.countries)}
+        self.country_time_to_index = {
+            country: {pd.Timestamp(ts).value: idx for idx, ts in enumerate(panel.times)}
+            for country, panel in country_panels.items()
+        }
         self.numeric_features = config.numeric_features
         self.mask_feature_names = tuple(f"{feature}{MASK_SUFFIX}" for feature in self.numeric_features)
         self.context_feature_names = CALENDAR_CONTEXT_FEATURES
@@ -163,6 +198,7 @@ class PreparedExperimentData:
         scaler: NumericScaler,
         *,
         include_country: bool,
+        include_multi_market: bool = False,
         tabular_values: np.ndarray | None = None,
     ) -> SequenceDataset:
         return SequenceDataset(
@@ -170,6 +206,7 @@ class PreparedExperimentData:
             samples,
             scaler,
             include_country=include_country,
+            include_multi_market=include_multi_market,
             tabular_values=tabular_values,
         )
 

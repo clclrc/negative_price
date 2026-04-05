@@ -82,10 +82,14 @@ Extended experiment IDs:
 - `E42`: 20-market public-feature `XGBoost` baseline under the current main task setup, `window=168`, `h=6`
 - `E43`: 20-market public-feature `CatBoost` baseline under the current main task setup, `window=168`, `h=6`
 - `E44`: 20-market public-feature `LightGBM` baseline under the current main task setup, `window=168`, `h=6`
+- `E45`: 20-market public-feature `GRUMultiMarket` experiment that jointly encodes all markets at the same anchor time, `window=168`, `h=6`
+- `E46`: 20-market public-feature `GraphTemporal` experiment that adds a dense market-interaction layer on top of joint multi-market encodings, `window=168`, `h=6`
+- `E47`: 20-market public-feature `GraphTemporalHybrid` experiment that fuses graph-temporal market representations with mechanism-aware tabular features, `window=168`, `h=6`
+- `E48`: repeated-seed version of `E47` with aggregated metrics across multiple random seeds
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, and `E44` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, and `E48` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -114,6 +118,10 @@ Important:
 - `E39` trains `E30` and `E31` as members and fits a small logistic-regression stacker on their validation-time probabilities
 - `E40` trains or reuses `E33` and `E34`, expands their raw seed members, and builds a validation-`PR-AUC`-weighted cross-seed ensemble
 - `E41-E44` are matched classical baselines for the current main task, using the same `20-country + public + window=168 + h=6` problem definition with tabular lag and rolling-stat features
+- `E45` is the first implemented multi-market deep baseline; it keeps a shared GRU encoder but stops treating each market as an isolated single-sequence problem
+- `E46` keeps the same multi-market data path as `E45` but adds a market-interaction layer to model cross-market state propagation
+- `E47` adds a gated fusion branch that combines graph-temporal market representations with the repository's strongest mechanism-aware tabular summaries
+- `E48` is the stability check for that graph-temporal hybrid line
 
 All default experiment definitions are created in:
 
@@ -282,6 +290,9 @@ Implemented sequence models:
 - `GRUHybridAttn`
 - `GRUHybridGated`
 - `GRUHybridGatedMultiTask`
+- `GRUMultiMarket`
+- `GraphTemporal`
+- `GraphTemporalHybrid`
 - `TCN`
 - `PatchTST`
 
