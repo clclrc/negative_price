@@ -626,5 +626,78 @@ For a fuller write-up, see `LITERATURE_EXPERIMENT_GUIDE.md`.
 - `E50/E51` are the main architecture follow-ups because they test whether the new multi-market sequence gain can be combined with the strongest handcrafted summaries
 - `E52` is the prepared deep-only ensemble branch for the post-`E45` family
 
+## Actual outcome from `E49-E51`
+
+- `E49` confirms that the `E45` multi-market gain is real and unusually stable
+- `E50` does not improve on `E45`; adding the handcrafted tabular branch in its current form hurts the multi-market line
+- `E51` recovers part of that loss with mechanism-aware features, but still does not beat `E45`
+- `E52` is still running and should not yet affect the roadmap
+
+### Updated benchmark view after `E49-E51`
+
+- Matched classical benchmark remains `E44 LightGBM`, test `PR-AUC = 0.4139`
+- Strongest completed deep ensemble remains `E35`, test `PR-AUC = 0.3691`
+- Strongest completed deep single-model line is now best summarized by `E49` rather than only the single-run `E45`
+  - `E45` single run: test `PR-AUC = 0.3880`
+  - `E49` repeated-seed mean: test `PR-AUC = 0.3867`, std `0.0014`
+
+### What changed
+
+- `E45` is no longer just a promising spike; `E49` shows it is the most stable strong deep single-model family seen so far
+- The current best post-`E45` interpretation is that joint multi-market sequence modeling itself is the useful gain
+- Re-attaching the old handcrafted branch is not yet helping under this family
+- Mechanism-aware features are less harmful than the plain hybrid branch, but still not enough to justify promoting `E51`
+
+### Why `E49` matters
+
+- The repeated-seed mean is almost identical to the single-run `E45` result
+- The variance is extremely small compared with earlier deep repeated-seed branches
+- This makes the `GRUMultiMarket` line much more defensible as the main deep single-model benchmark
+
+### Why `E50/E51` are currently not justified
+
+- `E50 GRUMultiMarketHybrid` drops to test `PR-AUC = 0.3513`
+- `E51` improves that to `0.3633`, but still trails both `E45 = 0.3880` and `E49 mean = 0.3867`
+- The current evidence therefore does not support prioritizing more handcrafted-branch fusion under the `E45` family
+
+### Updated recommended order
+
+1. Wait for `E52`
+2. Keep `E49` as the main deep single-model stability reference
+3. Keep `E44` as the matched classical score target
+4. De-prioritize `E50/E51` unless a materially different fusion design is proposed
+
+## Prepared follow-up experiments after `E49`
+
+- `E53`: target-conditioned market-attention `GRUMultiMarket`
+  Goal: replace the simple cross-market mean pooling in `E45/E49` with learned target-conditioned market attention so the model can focus on the most relevant neighboring markets
+- `E54`: temporal-attention `GRUMultiMarket`
+  Goal: replace the simple last-state style temporal summary in the current multi-market encoder with attention pooling over the full `168h` history
+- `E55`: 15-market renewables-track `GRUMultiMarket` on a strict shared-valid-sample subset
+  Goal: test whether the strong multi-market sequence line benefits from richer raw sequence inputs, rather than from re-attaching handcrafted summary branches
+- `E56`: score-ceiling fusion between the strongest stable deep single-model line and the strongest matched classical baseline
+  Goal: measure whether the new multi-market deep signal is complementary to the strongest tree baseline even if the standalone deep model still trails it
+
+### Recommended order after `E49`
+
+1. `E53`
+2. `E54`
+3. `E55`
+4. `E56`
+
+### Why this is the current best plan
+
+- `E49` shows the gain comes from the multi-market sequence model itself, so the next changes should stay inside that sequence branch
+- `E50/E51` show that re-attaching the current handcrafted branch is not the right next move
+- The most promising architectural gains are now better market aggregation and better temporal aggregation
+- If those still do not close the gap to `E44`, the next useful result is to test complementarity between the stable deep line and the strongest classical line
+
+### Implementation status
+
+- `E53-E56` are now implemented as runnable config defaults in the repository
+- `E53` and `E54` are the main architecture follow-ups because they keep the gain inside the now-stable `GRUMultiMarket` family
+- `E55` is the richer-input branch for testing raw renewables sequence value under a strict comparable subset
+- `E56` is the prepared score-ceiling branch for testing deep plus classical complementarity
+
 ## Maintenance rule
 - Whenever a materially new direction judgment is made, update this file so later threads can see the latest recommended roadmap.

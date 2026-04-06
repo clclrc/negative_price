@@ -298,3 +298,38 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E52"].meta_kind, "late_fusion")
         self.assertEqual(configs["E52"].meta_members, ("E45", "E35"))
         self.assertEqual(configs["E52"].models, ())
+
+    def test_default_configs_include_e49_centered_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E53", "E54", "E55", "E56"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E53"].models, ("GRUMultiMarketTargetAttn",))
+        self.assertEqual(configs["E54"].models, ("GRUMultiMarketTemporalAttn",))
+        self.assertEqual(configs["E55"].models, ("GRUMultiMarket",))
+        self.assertEqual(configs["E56"].models, ())
+
+        self.assertEqual(configs["E53"].countries, configs["E49"].countries)
+        self.assertEqual(configs["E54"].countries, configs["E49"].countries)
+        self.assertEqual(configs["E56"].countries, configs["E49"].countries)
+        self.assertEqual(configs["E55"].countries, configs["E17B"].countries)
+
+        self.assertEqual(configs["E53"].feature_group, "public")
+        self.assertEqual(configs["E54"].feature_group, "public")
+        self.assertEqual(configs["E55"].feature_group, "renewables")
+        self.assertEqual(configs["E56"].feature_group, "public")
+
+        self.assertEqual(configs["E53"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E53"].sequence_max_epochs, 100)
+        self.assertEqual(configs["E53"].sequence_patience, 15)
+        self.assertEqual(configs["E54"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E54"].sequence_max_epochs, 100)
+        self.assertEqual(configs["E54"].sequence_patience, 15)
+        self.assertEqual(configs["E55"].sequence_learning_rate, 5e-4)
+        self.assertEqual(configs["E55"].sequence_max_epochs, 100)
+        self.assertEqual(configs["E55"].sequence_patience, 15)
+        self.assertEqual(configs["E55"].sample_filter_feature_group, "renewables")
+
+        self.assertEqual(configs["E56"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E56"].meta_members, ("E49", "E44"))

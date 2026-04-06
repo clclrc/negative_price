@@ -451,6 +451,35 @@ if HAS_TORCH:
             return torch.sum(sequence_states * weights.unsqueeze(-1), dim=1)
 
 
+    class TargetConditionedMarketAttention(nn.Module):  # pragma: no cover - exercised through integration tests
+        def __init__(self, hidden_size: int, dropout: float = 0.2) -> None:
+            super().__init__()
+            self.query = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.key = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.value = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.dropout = nn.Dropout(dropout)
+            self.scale = hidden_size**0.5
+
+        def forward(
+            self,
+            target_state: torch.Tensor,
+            market_states: torch.Tensor,
+            market_valid: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            query = self.query(target_state).unsqueeze(1)
+            key = self.key(market_states)
+            value = self.value(market_states)
+            scores = torch.matmul(query, key.transpose(1, 2)).squeeze(1) / self.scale
+            if market_valid is not None:
+                valid_mask = market_valid > 0.5
+                scores = scores.masked_fill(~valid_mask, -1e9)
+            weights = torch.softmax(scores, dim=1)
+            if market_valid is not None:
+                weights = weights * market_valid
+                weights = weights / weights.sum(dim=1, keepdim=True).clamp(min=1e-6)
+            return torch.sum(self.dropout(weights).unsqueeze(-1) * value, dim=1)
+
+
     class GRUHybridAttnClassifier(nn.Module):  # pragma: no cover - exercised through integration tests
         def __init__(
             self,
@@ -728,6 +757,76 @@ if HAS_TORCH:
             if self.use_country_embedding:
                 features.append(self.country_embedding(country_idx))
             return self.classifier(torch.cat(features, dim=1)).squeeze(1)
+
+
+    class GRUMultiMarketTargetAttnClassifier(GRUMultiMarketClassifier):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__(
+                input_dim=input_dim,
+                use_country_embedding=use_country_embedding,
+                num_countries=num_countries,
+                embedding_dim=embedding_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+            self.market_attention = TargetConditionedMarketAttention(hidden_size, dropout=dropout)
+
+        def forward(
+            self,
+            x: torch.Tensor,
+            country_idx: torch.Tensor,
+            tabular_x: torch.Tensor | None = None,
+            market_x: torch.Tensor | None = None,
+            market_valid: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+            if market_x is None:
+                raise ValueError("GRUMultiMarketTargetAttnClassifier requires market_x.")
+            target_features = self.encode_sequence(x)
+            market_states = self.encode_markets(market_x)
+            attended_market = self.market_attention(target_features, market_states, market_valid)
+            features = [target_features, attended_market]
+            if self.use_country_embedding:
+                features.append(self.country_embedding(country_idx))
+            return self.classifier(torch.cat(features, dim=1)).squeeze(1)
+
+
+    class GRUMultiMarketTemporalAttnClassifier(GRUMultiMarketClassifier):  # pragma: no cover - exercised through integration tests
+        def __init__(
+            self,
+            *,
+            input_dim: int,
+            use_country_embedding: bool,
+            num_countries: int,
+            embedding_dim: int = 8,
+            hidden_size: int = 128,
+            num_layers: int = 2,
+            dropout: float = 0.2,
+        ) -> None:
+            super().__init__(
+                input_dim=input_dim,
+                use_country_embedding=use_country_embedding,
+                num_countries=num_countries,
+                embedding_dim=embedding_dim,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+            )
+            self.temporal_attention = TemporalAttentionPooling(hidden_size)
+
+        def encode_sequence(self, x: torch.Tensor) -> torch.Tensor:
+            sequence_states, _ = self.gru(x)
+            return self.temporal_attention(sequence_states)
 
 
     class GRUMultiMarketHybridClassifier(GRUMultiMarketClassifier):  # pragma: no cover - exercised through integration tests
@@ -1152,6 +1251,18 @@ def build_sequence_model(
         return GRUMultiMarketHybridClassifier(
             input_dim=input_dim,
             tabular_dim=tabular_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GRUMultiMarketTargetAttn":
+        return GRUMultiMarketTargetAttnClassifier(
+            input_dim=input_dim,
+            use_country_embedding=use_country_embedding,
+            num_countries=num_countries,
+        )
+    if model_name == "GRUMultiMarketTemporalAttn":
+        return GRUMultiMarketTemporalAttnClassifier(
+            input_dim=input_dim,
             use_country_embedding=use_country_embedding,
             num_countries=num_countries,
         )

@@ -266,6 +266,65 @@ class NegativePriceRunnerTest(unittest.TestCase):
             self.assertIn("LateFusion", set(e35_metrics["model"]))
             self.assertTrue(any(str(model).startswith("Calibrated") for model in set(e36_metrics["model"])))
 
+    def test_late_fusion_smoke_run_supports_repeated_seed_member(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            common_kwargs = {
+                "data_path": data_path,
+                "countries": ("AT", "BE"),
+                "feature_group": "public",
+                "window_hours": 24,
+                "horizon_hours": 1,
+                "split_strategy": "unit",
+                "ffill_limit": 3,
+                "primary_metric": "pr_auc",
+                "random_seed": 42,
+            }
+            e49 = ExperimentConfig(
+                name="E49",
+                models=("Majority",),
+                repeat_random_seeds=(42, 52),
+                **common_kwargs,
+            )
+            e44 = ExperimentConfig(name="E44", models=("LogisticRegression",), **common_kwargs)
+            e56 = ExperimentConfig(
+                name="E56",
+                models=(),
+                meta_kind="late_fusion",
+                meta_members=("E49", "E44"),
+                **common_kwargs,
+            )
+            folds = (
+                WalkForwardFold(
+                    "F1",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-04 00:00:00")),
+                    TimeRange(utc_ts("2024-01-04 00:00:00"), utc_ts("2024-01-06 00:00:00")),
+                ),
+                WalkForwardFold(
+                    "F2",
+                    TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-06 00:00:00")),
+                    TimeRange(utc_ts("2024-01-06 00:00:00"), utc_ts("2024-01-08 00:00:00")),
+                ),
+            )
+            config_map = {"E49": e49, "E44": e44, "E56": e56}
+
+            with patch("negative_price_experiments.pipeline.build_default_experiment_configs", return_value=config_map):
+                e56_artifacts = run_experiment(
+                    e56,
+                    output_dir=out_dir,
+                    folds=folds,
+                    final_train_range=TimeRange(utc_ts("2024-01-01 00:00:00"), utc_ts("2024-01-07 00:00:00")),
+                    final_test_range=TimeRange(utc_ts("2024-01-07 00:00:00"), utc_ts("2024-01-08 12:00:00")),
+                )
+
+            metrics = pd.read_csv(e56_artifacts["metrics_summary"])
+            self.assertIn("LateFusion", set(metrics["model"]))
+            self.assertTrue(Path(e56_artifacts["member_weights"]).exists())
+
     def test_stacking_and_cross_seed_meta_experiments_smoke_run_with_patched_member_configs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

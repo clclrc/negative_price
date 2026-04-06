@@ -384,6 +384,35 @@ The next round should now focus on strengthening the successful multi-market lin
 
 These four experiments are now implemented in code as the repository's prepared post-`E45` follow-up branch.
 
+### **Latest outcome from `E49-E51`**
+
+The first post-`E45` follow-up round materially clarifies what the project should trust. `E49`, which is the repeated-seed version of `E45`, gives test `PR-AUC = 0.3867` with a very small standard deviation of about `0.0014`. This is almost identical to the original `E45 = 0.3880`, which means the multi-market gain is not just a lucky single run. The most defensible deep single-model line is therefore now the `GRUMultiMarket` family summarized by `E49`, not the one-off `E45` score alone.
+
+The attempted hybrid follow-ups do not help. `E50 = GRUMultiMarketHybrid` drops to test `PR-AUC = 0.3513`, and `E51`, which adds mechanism-aware engineered features, improves to `0.3633` but still does not recover the pure multi-market result. This suggests that, under the current family, the useful gain comes from joint multi-market sequence encoding itself rather than from re-attaching the repository's older handcrafted summary branch.
+
+At this point the benchmark picture is:
+
+1. matched classical benchmark: `E44 LightGBM`, test `PR-AUC = 0.4139`
+2. strongest completed deep ensemble: `E35`, test `PR-AUC = 0.3691`
+3. strongest completed and now stability-checked deep single-model line: `E49/E45 GRUMultiMarket`, test `PR-AUC ≈ 0.387`
+
+`E52` is still running, so it should not yet be used to change the roadmap. The current next-step logic should be to treat `E49` as the main deep single-model reference and not prioritize more `E50/E51`-style fusion unless a substantially different fusion design is proposed.
+
+### **Prepared follow-up experiments after `E49`**
+
+The next round should now stay inside the stable `GRUMultiMarket` family rather than continuing to push the currently underperforming handcrafted re-fusion branch.
+
+1. `E53`: `GRUMultiMarketTargetAttn`.  
+   Goal: replace the simple cross-market mean pooling in `E45/E49` with target-conditioned market attention.
+2. `E54`: `GRUMultiMarketTemporalAttn`.  
+   Goal: replace the current temporal compression with attention pooling over the full `168h` history.
+3. `E55`: `15-market` renewables-track `GRUMultiMarket` on a strict renewables-valid shared subset.  
+   Goal: test whether the stable multi-market line benefits from richer raw sequence inputs rather than from handcrafted re-fusion.
+4. `E56`: late-fusion between `E49` and `E44`.  
+   Goal: measure whether the strongest stable deep single-model line and the strongest matched classical baseline are complementary.
+
+These four experiments are now implemented in code as the repository's prepared post-`E49` follow-up branch.
+
 ### **Workflow note for future rounds**
 
 For new experiment families after this point, the preferred order is:

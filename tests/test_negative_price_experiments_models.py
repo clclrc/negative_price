@@ -90,6 +90,18 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
             num_countries=3,
             tabular_dim=6,
         )
+        market_attn = build_sequence_model(
+            "GRUMultiMarketTargetAttn",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+        )
+        temporal_attn = build_sequence_model(
+            "GRUMultiMarketTemporalAttn",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+        )
         graph_temporal = build_sequence_model(
             "GraphTemporal",
             input_dim=4,
@@ -105,6 +117,8 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
         )
         self.assertEqual(multi_market.__class__.__name__, "GRUMultiMarketClassifier")
         self.assertEqual(multi_market_hybrid.__class__.__name__, "GRUMultiMarketHybridClassifier")
+        self.assertEqual(market_attn.__class__.__name__, "GRUMultiMarketTargetAttnClassifier")
+        self.assertEqual(temporal_attn.__class__.__name__, "GRUMultiMarketTemporalAttnClassifier")
         self.assertEqual(graph_temporal.__class__.__name__, "GraphTemporalClassifier")
         self.assertEqual(graph_hybrid.__class__.__name__, "GraphTemporalHybridClassifier")
 
@@ -176,6 +190,42 @@ class NegativePriceModelsDeviceTest(unittest.TestCase):
 
         self.assertEqual(tuple(logits.shape), (2,))
         self.assertTrue(torch.isfinite(logits).all())
+
+    def test_multi_market_attention_models_forward_returns_finite_logits(self) -> None:
+        market_attn = build_sequence_model(
+            "GRUMultiMarketTargetAttn",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+        )
+        temporal_attn = build_sequence_model(
+            "GRUMultiMarketTemporalAttn",
+            input_dim=4,
+            use_country_embedding=True,
+            num_countries=3,
+        )
+        x = torch.randn(2, 8, 4)
+        market_x = torch.randn(2, 3, 8, 4)
+        market_valid = torch.tensor([[1.0, 1.0, 1.0], [1.0, 0.0, 1.0]], dtype=torch.float32)
+        country_idx = torch.tensor([0, 2], dtype=torch.long)
+
+        market_logits = market_attn(
+            x=x,
+            country_idx=country_idx,
+            market_x=market_x,
+            market_valid=market_valid,
+        )
+        temporal_logits = temporal_attn(
+            x=x,
+            country_idx=country_idx,
+            market_x=market_x,
+            market_valid=market_valid,
+        )
+
+        self.assertEqual(tuple(market_logits.shape), (2,))
+        self.assertEqual(tuple(temporal_logits.shape), (2,))
+        self.assertTrue(torch.isfinite(market_logits).all())
+        self.assertTrue(torch.isfinite(temporal_logits).all())
 
 
 @unittest.skipUnless(HAS_TORCH, "torch is required for focal loss tests")

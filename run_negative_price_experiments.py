@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--experiments",
         default="E1,E2,E3,E4",
-        help="Comma-separated experiment IDs to run. Supported: E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,E11,E12,E13,E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28,E29,E30,E31,E32,E33,E34,E35,E36,E37,E38,E39,E40,E41,E42,E43,E44,E45,E46,E47,E48,E49,E50,E51,E52.",
+        help="Comma-separated experiment IDs to run. Supported: E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,E11,E12,E13,E14,E15A,E15B,E16A,E16B,E17A,E17B,E18,E19,E20,E21,E22A,E22B,E23,E24,E25,E26,E27,E28,E29,E30,E31,E32,E33,E34,E35,E36,E37,E38,E39,E40,E41,E42,E43,E44,E45,E46,E47,E48,E49,E50,E51,E52,E53,E54,E55,E56.",
     )
     parser.add_argument(
         "--skip-unavailable-models",

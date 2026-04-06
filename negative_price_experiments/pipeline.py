@@ -76,7 +76,14 @@ HYBRID_SEQUENCE_MODELS = (
     "GRUMultiMarketHybrid",
     "GraphTemporalHybrid",
 )
-MULTI_MARKET_SEQUENCE_MODELS = ("GRUMultiMarket", "GRUMultiMarketHybrid", "GraphTemporal", "GraphTemporalHybrid")
+MULTI_MARKET_SEQUENCE_MODELS = (
+    "GRUMultiMarket",
+    "GRUMultiMarketHybrid",
+    "GRUMultiMarketTargetAttn",
+    "GRUMultiMarketTemporalAttn",
+    "GraphTemporal",
+    "GraphTemporalHybrid",
+)
 
 
 def run_experiment(
@@ -363,6 +370,20 @@ def _read_prediction_subset(artifacts: dict[str, Path], *, split: str) -> pd.Dat
     return subset
 
 
+def _collapse_seed_averaged_predictions(subset: pd.DataFrame) -> pd.DataFrame:
+    if subset.empty:
+        return subset
+    if "seed" not in subset.columns or subset["seed"].dropna().empty:
+        return subset.drop(columns=["seed"], errors="ignore").copy()
+    group_cols = [column for column in subset.columns if column not in {"y_prob", "seed"}]
+    aggregated = (
+        subset.groupby(group_cols, dropna=False, sort=False)["y_prob"]
+        .mean()
+        .reset_index()
+    )
+    return aggregated
+
+
 def _seed_member_label(experiment_name: str, seed: object) -> str:
     if pd.isna(seed):
         return experiment_name
@@ -534,10 +555,16 @@ def _build_late_fusion_artifacts(
     ).to_csv(output_path / "member_weights.csv", index=False)
 
     val_merged = _merge_member_prediction_frames(
-        {member_name: _read_prediction_subset(artifacts, split="val") for member_name, artifacts in member_artifacts.items()}
+        {
+            member_name: _collapse_seed_averaged_predictions(_read_prediction_subset(artifacts, split="val"))
+            for member_name, artifacts in member_artifacts.items()
+        }
     )
     test_merged = _merge_member_prediction_frames(
-        {member_name: _read_prediction_subset(artifacts, split="test") for member_name, artifacts in member_artifacts.items()}
+        {
+            member_name: _collapse_seed_averaged_predictions(_read_prediction_subset(artifacts, split="test"))
+            for member_name, artifacts in member_artifacts.items()
+        }
     )
     if val_merged.empty or test_merged.empty:
         raise RuntimeError(f"{config.name} could not build late-fusion predictions from empty member outputs.")
@@ -612,10 +639,16 @@ def _build_stacking_artifacts(
     sample_manifest = pd.read_csv(first_artifacts["sample_manifest"])
 
     val_merged = _merge_member_prediction_frames(
-        {member_name: _read_prediction_subset(artifacts, split="val") for member_name, artifacts in member_artifacts.items()}
+        {
+            member_name: _collapse_seed_averaged_predictions(_read_prediction_subset(artifacts, split="val"))
+            for member_name, artifacts in member_artifacts.items()
+        }
     )
     test_merged = _merge_member_prediction_frames(
-        {member_name: _read_prediction_subset(artifacts, split="test") for member_name, artifacts in member_artifacts.items()}
+        {
+            member_name: _collapse_seed_averaged_predictions(_read_prediction_subset(artifacts, split="test"))
+            for member_name, artifacts in member_artifacts.items()
+        }
     )
     if val_merged.empty or test_merged.empty:
         raise RuntimeError(f"{config.name} could not build stacking predictions from empty member outputs.")

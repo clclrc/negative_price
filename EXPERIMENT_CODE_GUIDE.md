@@ -90,10 +90,14 @@ Extended experiment IDs:
 - `E50`: 20-market public-feature `GRUMultiMarketHybrid` experiment that fuses the multi-market sequence encoder with the strongest handcrafted tabular branch, `window=168`, `h=6`
 - `E51`: 20-market public-feature `GRUMultiMarketHybrid` experiment with mechanism-aware engineered tabular features, `window=168`, `h=6`
 - `E52`: validation-weighted late-fusion ensemble wrapper over `E45` and `E35`
+- `E53`: 20-market public-feature `GRUMultiMarketTargetAttn` experiment that replaces uniform cross-market pooling with target-conditioned market attention, `window=168`, `h=6`
+- `E54`: 20-market public-feature `GRUMultiMarketTemporalAttn` experiment that uses temporal attention pooling over the full `168h` sequence before cross-market aggregation, `window=168`, `h=6`
+- `E55`: 15-market renewables-feature `GRUMultiMarket` experiment on the renewables-valid shared subset, `window=168`, `h=6`
+- `E56`: validation-weighted late-fusion ensemble wrapper over `E49` and `E44`
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, `E48`, `E49`, `E50`, `E51`, and `E52` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, `E48`, `E49`, `E50`, `E51`, `E52`, `E53`, `E54`, `E55`, and `E56` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -130,6 +134,10 @@ Important:
 - `E50` adds a gated handcrafted-feature branch to the `E45` multi-market encoder without changing the main forecasting task
 - `E51` keeps the `E50` architecture but upgrades the tabular branch with mechanism-aware engineered features
 - `E52` builds a deep-only ensemble between the strongest completed multi-market single model and the strongest completed deep ensemble comparator
+- `E53` tests whether learned target-conditioned market attention is a better cross-market summary than the uniform pooling used in `E45`
+- `E54` tests whether the `GRUMultiMarket` line benefits from temporal attention pooling before market-level aggregation
+- `E55` tests whether the stable multi-market line benefits from renewables-rich raw sequence inputs under a stricter shared-valid-sample subset
+- `E56` is the prepared ceiling test for deep plus classical complementarity under the current matched task definition
 
 All default experiment definitions are created in:
 
