@@ -370,12 +370,27 @@ def _read_prediction_subset(artifacts: dict[str, Path], *, split: str) -> pd.Dat
     return subset
 
 
+def _prediction_merge_key_columns(subset: pd.DataFrame) -> list[str]:
+    key_cols = [
+        column
+        for column in ("country", "anchor_time", "target_time", "y_true", "split", "fold", "protocol")
+        if column in subset.columns
+    ]
+    if key_cols:
+        return key_cols
+    return [
+        column
+        for column in subset.columns
+        if column not in {"y_prob", "seed", "threshold", "candidate", "experiment", "model"}
+    ]
+
+
 def _collapse_seed_averaged_predictions(subset: pd.DataFrame) -> pd.DataFrame:
     if subset.empty:
         return subset
     if "seed" not in subset.columns or subset["seed"].dropna().empty:
         return subset.drop(columns=["seed"], errors="ignore").copy()
-    group_cols = [column for column in subset.columns if column not in {"y_prob", "seed"}]
+    group_cols = _prediction_merge_key_columns(subset)
     aggregated = (
         subset.groupby(group_cols, dropna=False, sort=False)["y_prob"]
         .mean()
@@ -441,11 +456,7 @@ def _merge_member_prediction_frames(member_frames: dict[str, pd.DataFrame]) -> p
     key_cols: list[str] = []
     for member_name, frame in member_frames.items():
         member = frame.copy()
-        key_cols = [
-            column
-            for column in ("country", "anchor_time", "target_time", "y_true", "split", "fold", "protocol")
-            if column in member.columns
-        ]
+        key_cols = _prediction_merge_key_columns(member)
         renamed = member[key_cols + ["y_prob"]].rename(columns={"y_prob": f"y_prob__{member_name}"})
         if merged is None:
             merged = renamed

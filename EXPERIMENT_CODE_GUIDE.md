@@ -94,10 +94,14 @@ Extended experiment IDs:
 - `E54`: 20-market public-feature `GRUMultiMarketTemporalAttn` experiment that uses temporal attention pooling over the full `168h` sequence before cross-market aggregation, `window=168`, `h=6`
 - `E55`: 15-market renewables-feature `GRUMultiMarket` experiment on the renewables-valid shared subset, `window=168`, `h=6`
 - `E56`: validation-weighted late-fusion ensemble wrapper over `E49` and `E44`
+- `E57`: validation-weighted late-fusion ensemble wrapper over `E49` and `E42`
+- `E58`: validation-weighted late-fusion ensemble wrapper over `E49`, `E42`, and `E44`
+- `E59`: 15-market public-feature `GRUMultiMarket` experiment on the renewables-valid shared subset, `window=168`, `h=6`
+- `E60`: repeated-seed version of `E55` using the default sequence training budget
 
 Important:
 
-- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, `E48`, `E49`, `E50`, `E51`, `E52`, `E53`, `E54`, `E55`, and `E56` listed above are implemented config defaults
+- `E11`, `E12`, `E13`, `E14`, `E15A`, `E15B`, `E16A`, `E16B`, `E17A`, `E17B`, `E18`, `E19`, `E20`, `E21`, `E22A`, `E22B`, `E23`, `E24`, `E25`, `E26`, `E27`, `E28`, `E29`, `E30`, `E31`, `E32`, `E33`, `E34`, `E35`, `E36`, `E37`, `E38`, `E39`, `E40`, `E41`, `E42`, `E43`, `E44`, `E45`, `E46`, `E47`, `E48`, `E49`, `E50`, `E51`, `E52`, `E53`, `E54`, `E55`, `E56`, `E57`, `E58`, `E59`, and `E60` listed above are implemented config defaults
 - `E14` is the implemented imbalance-aware extension of the current `E12`-style deep backbone
 - `E15A/E15B` form a paired renewables-track comparison on the same 15-country subset
 - `E16A/E16B` form a paired flow-track comparison on the same 7-country subset
@@ -138,6 +142,10 @@ Important:
 - `E54` tests whether the `GRUMultiMarket` line benefits from temporal attention pooling before market-level aggregation
 - `E55` tests whether the stable multi-market line benefits from renewables-rich raw sequence inputs under a stricter shared-valid-sample subset
 - `E56` is the prepared ceiling test for deep plus classical complementarity under the current matched task definition
+- `E57` tests whether the stable multi-market deep line is more complementary to `XGBoost` than to `LightGBM`
+- `E58` extends that ceiling test by fusing the stable multi-market deep line with both strong classical baselines
+- `E59` is the matched public baseline needed to interpret `E55` as a renewables-track gain rather than as a subset artifact
+- `E60` is the repeated-seed stability check for the `E55` renewables-track line, using the standard sequence training budget
 
 All default experiment definitions are created in:
 

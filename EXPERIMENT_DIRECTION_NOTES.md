@@ -699,5 +699,108 @@ For a fuller write-up, see `LITERATURE_EXPERIMENT_GUIDE.md`.
 - `E55` is the richer-input branch for testing raw renewables sequence value under a strict comparable subset
 - `E56` is the prepared score-ceiling branch for testing deep plus classical complementarity
 
+## Actual outcome from `E52`
+
+- `E52` is a real positive result
+- It improves on `E35`
+- It does not beat `E49` on `PR-AUC`
+- It still does not beat `E44`
+
+### Updated benchmark view after `E52`
+
+- Matched classical benchmark remains `E44 LightGBM`, test `PR-AUC = 0.4139`
+- Strongest completed deep single-model line remains `E49/E45 GRUMultiMarket`, test `PR-AUC ≈ 0.387`
+- Strongest completed deep ensemble is now `E52`, test `PR-AUC = 0.3772`
+
+### What changed
+
+- `E52` confirms that the stable multi-market deep line and the earlier deep ensemble line are complementary
+- The gain is real relative to `E35`, but not enough to pass `E49`
+- The project still does not have evidence that any deep-only branch has closed the gap to the matched tree baseline
+- This means the deep roadmap should continue to focus on strengthening the `GRUMultiMarket` family itself rather than repeatedly wrapping existing deep members in more ensemble layers
+
+### Why `E52` matters
+
+- `E52` improves on `E35 = 0.3691`
+- `E52` does not improve on `E49 mean = 0.3867` in the primary metric
+- `E52` is therefore useful as the best completed deep ensemble branch, but not as the new main deep score target
+
+## Actual outcome from `E53-E56`
+
+- `E53` is negative evidence
+- `E54` is strong negative evidence
+- `E55` is a positive but subset-only renewables signal
+- `E56` becomes the strongest completed result after the late-fusion merge bug is fixed
+
+### Updated benchmark view after `E56`
+
+- Strongest completed result is now `E56 = E49 + E44` late fusion, test `PR-AUC = 0.4257`
+- Strongest matched classical single-model benchmark remains `E44 LightGBM`, test `PR-AUC = 0.4139`
+- Strongest stable deep single-model benchmark remains `E49 GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+- Strongest completed deep-only ensemble remains `E52`, test `PR-AUC = 0.3772`
+
+### What `E53` and `E54` tell us
+
+- `E53 GRUMultiMarketTargetAttn` drops to test `PR-AUC = 0.3114`
+- `E54 GRUMultiMarketTemporalAttn` drops further to `0.2468`
+- The current evidence therefore does not support replacing the simple `E49` multi-market pooling with these first attention variants
+
+### What `E55` tells us
+
+- `E55` reaches test `PR-AUC = 0.3614` on the strict `15-market renewables` subset
+- This is much stronger than the earlier `15-market renewables` deep lines such as `E17B = 0.2665`, `E19 = 0.2775`, and `E22B = 0.2735`
+- It should therefore be kept as a viable subset-specific renewables branch, but not treated as a direct replacement for the `20-country` main benchmark
+
+### What `E56` changes
+
+- `E56` beats `E44` on the matched `20-country + public + window=168 + h=6` task
+- The gain is not from a new standalone deep model, but from complementarity between the stable deep multi-market line and the strongest classical baseline
+- This means the project now has evidence that deep-learning representations add usable signal, even though the strongest standalone deep single model still trails the strongest standalone classical model
+
+### Updated recommended order
+
+1. Keep `E49` as the main standalone deep architecture reference
+2. Keep `E56` as the score-ceiling benchmark for the current task
+3. De-prioritize `E53/E54` and the current `GraphTemporal` family
+4. Keep `E55` as the subset renewables branch if the goal is to study richer raw-sequence value rather than the `20-country` main score
+5. Design future work around improving the `E49` family or around stronger deep-plus-classical complementarity, not around the current attention replacements
+
+## Prepared follow-up experiments after `E56`
+
+The next round should split into a score-ceiling track and a scientific-comparison track.
+
+### Score-ceiling track
+
+- `E57`: `E49 + E42` late fusion
+  Goal: test whether the strongest stable deep single-model line is more complementary to `XGBoost` than to `LightGBM`
+- `E58`: `E49 + E42 + E44` late fusion
+  Goal: test whether combining the stable deep line with both strong classical baselines produces a higher ceiling than `E56`
+
+### Scientific-comparison track
+
+- `E59`: `15-country public GRUMultiMarket` with `sample_filter_feature_group="renewables"`
+  Goal: create the missing matched public baseline for `E55` on the exact same valid-sample subset
+- `E60`: repeated-seed `E55`
+  Goal: only after `E59` confirms the renewables branch has net gain, verify whether the `E55` uplift is stable across seeds
+
+### Recommended order after `E56`
+
+1. `E57`
+2. `E58`
+3. `E59`
+4. `E60` if and only if `E55 > E59`
+
+### Why this is the current best plan
+
+- `E56` already proves that the stable deep multi-market line and the strongest classical baseline are complementary
+- The fastest way to improve the overall score is therefore to test complementarity against the other strong classical baseline `E42`, and then against both `E42` and `E44`
+- `E55` is promising, but it still lacks the matched `15-country public` comparator needed for a clean scientific claim about renewables-track gain under the `GRUMultiMarket` family
+- The failed `E53/E54` attention replacements mean the next useful deep-only work should not be another architectural replacement inside the current `E49` family until the simpler score-ceiling and subset-comparison questions are answered
+
+### Implementation status
+
+- `E57-E60` are now implemented as runnable config defaults in the repository
+- `E59` and `E60` intentionally use the standard sequence training budget rather than the earlier aggressive settings
+
 ## Maintenance rule
 - Whenever a materially new direction judgment is made, update this file so later threads can see the latest recommended roadmap.

@@ -119,3 +119,18 @@ Notes:
 - Replace `<EXPERIMENT_IDS>` with the required comma-separated experiment IDs.
 - Write outputs under the `outputs/` folder using the timestamped directory pattern `outputs/experiment_outputs_${RUN_ID}`.
 - Future responses that provide experiment start commands should follow this format unless the user explicitly requests a different one.
+
+## Default training budget for future experiments
+
+For newly designed experiments after the current implemented set:
+
+- Do not default to the previously used aggressive sequence-training budget.
+- Unless the user explicitly asks for a more aggressive setup, use the ordinary sequence-training defaults:
+  - `sequence_learning_rate = 1e-3`
+  - `sequence_max_epochs = 30`
+  - `sequence_patience = 5`
+
+Interpretation rule:
+
+- Existing experiment definitions should not be retroactively rewritten just to match this preference.
+- New experiment designs from this point onward should use the ordinary training budget by default.

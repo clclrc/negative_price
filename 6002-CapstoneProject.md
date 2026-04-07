@@ -396,7 +396,7 @@ At this point the benchmark picture is:
 2. strongest completed deep ensemble: `E35`, test `PR-AUC = 0.3691`
 3. strongest completed and now stability-checked deep single-model line: `E49/E45 GRUMultiMarket`, test `PR-AUC ≈ 0.387`
 
-`E52` is still running, so it should not yet be used to change the roadmap. The current next-step logic should be to treat `E49` as the main deep single-model reference and not prioritize more `E50/E51`-style fusion unless a substantially different fusion design is proposed.
+`E52` has now completed and gives test `PR-AUC = 0.3772`. That is a real gain over `E35 = 0.3691`, so the late-fusion between the stable multi-market line and the older deep ensemble line is genuinely complementary. However, it still does not beat `E49 = 0.3867`, so it does not replace the multi-market single-model family as the main deep score target. The current next-step logic should therefore still treat `E49` as the main deep single-model reference and not prioritize more `E50/E51`-style fusion unless a substantially different fusion design is proposed.
 
 ### **Prepared follow-up experiments after `E49`**
 
@@ -412,6 +412,23 @@ The next round should now stay inside the stable `GRUMultiMarket` family rather 
    Goal: measure whether the strongest stable deep single-model line and the strongest matched classical baseline are complementary.
 
 These four experiments are now implemented in code as the repository's prepared post-`E49` follow-up branch.
+
+### **Latest outcome from `E53-E56`**
+
+The next post-`E49` round produces a much clearer answer than expected. The two architectural attention variants do not help. `E53 = GRUMultiMarketTargetAttn` falls to test `PR-AUC = 0.3114`, and `E54 = GRUMultiMarketTemporalAttn` drops further to `0.2468`. This means the simple and stable `GRUMultiMarket` line should remain the main standalone deep architecture, and the first attention replacements should not be treated as the next main direction.
+
+`E55`, which keeps the multi-market sequence model but moves to the strict `15-market renewables` subset, is more encouraging. It reaches test `PR-AUC = 0.3614`, which is substantially stronger than the older renewables-track deep results on comparable subset settings. This suggests that the stable multi-market encoder can extract more value from richer raw renewables sequences than the earlier single-market or older hybrid deep lines, but it is still a subset experiment rather than the main `20-country` benchmark.
+
+The most important change is `E56`. The first run failed because the late-fusion pipeline treated seed-specific thresholds inside `E49` as part of the grouping key when averaging repeated-seed predictions, which left duplicate rows and caused a merge error. After fixing that bug and regenerating the fusion artifacts from the already finished `E49` and `E44` member outputs, `E56` reaches test `PR-AUC = 0.4257`. This beats both the strongest matched classical single-model baseline `E44 = 0.4139` and the strongest standalone deep single-model line `E49 = 0.3867`. The project therefore now has evidence that deep-learning representations contribute genuinely complementary signal, even though the best standalone deep model still does not beat the best standalone tree model.
+
+The benchmark picture after this round is:
+
+1. strongest completed overall result: `E56 = E49 + E44` late fusion, test `PR-AUC = 0.4257`
+2. strongest matched classical single model: `E44 LightGBM`, test `PR-AUC = 0.4139`
+3. strongest stable deep single model: `E49 GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+4. strongest completed deep-only ensemble: `E52`, test `PR-AUC = 0.3772`
+
+This changes the interpretation of the deep-learning line. The best next-generation single deep model is still `GRUMultiMarket`, but the current ceiling is no longer defined by standalone deep performance alone. The most useful conclusion is that the stable multi-market deep representation and the strongest handcrafted tree baseline are complementary on the matched task.
 
 ### **Workflow note for future rounds**
 

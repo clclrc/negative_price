@@ -14,6 +14,7 @@ from negative_price_experiments.config import AdaptBudget, ExperimentConfig, Tim
 from negative_price_experiments.models import HAS_TORCH, HAS_XGBOOST, TorchTrainingOutcome
 from negative_price_experiments.pipeline import (
     _build_meta_prediction_frame,
+    _collapse_seed_averaged_predictions,
     _merge_member_prediction_frames,
     _meta_metric_score,
     _normalize_member_weights,
@@ -119,6 +120,41 @@ class NegativePriceRunnerTest(unittest.TestCase):
         self.assertIn("fold", frame.columns)
         self.assertIn("fusion_strategy", frame.columns)
         self.assertEqual(frame["model"].iloc[0], "LateFusion")
+
+    def test_collapse_seed_averaged_predictions_ignores_threshold_metadata(self) -> None:
+        repeated_seed_predictions = pd.DataFrame(
+            {
+                "country": ["AT", "AT", "BE", "BE"],
+                "anchor_time": [
+                    "2024-01-01 00:00:00+00:00",
+                    "2024-01-01 00:00:00+00:00",
+                    "2024-01-01 01:00:00+00:00",
+                    "2024-01-01 01:00:00+00:00",
+                ],
+                "target_time": [
+                    "2024-01-01 01:00:00+00:00",
+                    "2024-01-01 01:00:00+00:00",
+                    "2024-01-01 02:00:00+00:00",
+                    "2024-01-01 02:00:00+00:00",
+                ],
+                "y_true": [0, 0, 1, 1],
+                "split": ["val", "val", "val", "val"],
+                "fold": ["F1", "F1", "F1", "F1"],
+                "experiment": ["E49", "E49", "E49", "E49"],
+                "model": ["GRUMultiMarket"] * 4,
+                "candidate": ["default"] * 4,
+                "threshold": [0.2, 0.8, 0.3, 0.7],
+                "seed": [42, 52, 42, 52],
+                "y_prob": [0.2, 0.4, 0.6, 0.8],
+            }
+        )
+
+        collapsed = _collapse_seed_averaged_predictions(repeated_seed_predictions)
+
+        self.assertEqual(len(collapsed), 2)
+        self.assertNotIn("threshold", collapsed.columns)
+        self.assertNotIn("seed", collapsed.columns)
+        np.testing.assert_allclose(collapsed["y_prob"].to_numpy(dtype=np.float32), np.array([0.3, 0.7], dtype=np.float32))
 
     def test_meta_metric_score_uses_raw_rows_when_seed_aggregation_present(self) -> None:
         metrics = pd.DataFrame(

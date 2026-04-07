@@ -333,3 +333,34 @@ class NegativePriceConfigTest(unittest.TestCase):
 
         self.assertEqual(configs["E56"].meta_kind, "late_fusion")
         self.assertEqual(configs["E56"].meta_members, ("E49", "E44"))
+
+    def test_default_configs_include_post_e56_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E57", "E58", "E59", "E60"):
+            self.assertIn(name, configs)
+
+        self.assertEqual(configs["E57"].models, ())
+        self.assertEqual(configs["E58"].models, ())
+        self.assertEqual(configs["E59"].models, ("GRUMultiMarket",))
+        self.assertEqual(configs["E60"].models, ("GRUMultiMarket",))
+
+        self.assertEqual(configs["E57"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E57"].meta_members, ("E49", "E42"))
+        self.assertEqual(configs["E58"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E58"].meta_members, ("E49", "E42", "E44"))
+
+        self.assertEqual(configs["E59"].countries, configs["E55"].countries)
+        self.assertEqual(configs["E60"].countries, configs["E55"].countries)
+        self.assertEqual(configs["E59"].feature_group, "public")
+        self.assertEqual(configs["E60"].feature_group, "renewables")
+        self.assertEqual(configs["E59"].sample_filter_feature_group, "renewables")
+        self.assertEqual(configs["E60"].sample_filter_feature_group, "renewables")
+
+        self.assertEqual(configs["E59"].sequence_learning_rate, 1e-3)
+        self.assertEqual(configs["E59"].sequence_max_epochs, 30)
+        self.assertEqual(configs["E59"].sequence_patience, 5)
+        self.assertEqual(configs["E60"].sequence_learning_rate, 1e-3)
+        self.assertEqual(configs["E60"].sequence_max_epochs, 30)
+        self.assertEqual(configs["E60"].sequence_patience, 5)
+        self.assertEqual(configs["E60"].repeat_random_seeds, (42, 52, 62))
