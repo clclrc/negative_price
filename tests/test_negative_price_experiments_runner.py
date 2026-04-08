@@ -18,6 +18,8 @@ from negative_price_experiments.pipeline import (
     _merge_member_prediction_frames,
     _meta_metric_score,
     _normalize_member_weights,
+    _run_late_fusion_experiment,
+    _run_repeated_seed_experiment,
     _weighted_member_probability,
     run_experiment,
     run_transfer_experiment,
@@ -82,6 +84,81 @@ def build_transfer_frame() -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows)
+
+
+def write_fake_artifacts(
+    output_dir: Path,
+    *,
+    experiment: str,
+    model: str,
+    val_prob: float,
+    test_prob: float,
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sample_manifest = pd.DataFrame(
+        {
+            "country": ["AT", "AT"],
+            "anchor_time": ["2024-01-01 00:00:00+00:00", "2024-01-01 01:00:00+00:00"],
+            "target_time": ["2024-01-01 01:00:00+00:00", "2024-01-01 02:00:00+00:00"],
+            "y_true": [0, 1],
+        }
+    )
+    predictions = pd.DataFrame(
+        {
+            "country": ["AT", "AT", "AT", "AT"],
+            "anchor_time": [
+                "2024-01-01 00:00:00+00:00",
+                "2024-01-01 01:00:00+00:00",
+                "2024-01-01 00:00:00+00:00",
+                "2024-01-01 01:00:00+00:00",
+            ],
+            "target_time": [
+                "2024-01-01 01:00:00+00:00",
+                "2024-01-01 02:00:00+00:00",
+                "2024-01-01 01:00:00+00:00",
+                "2024-01-01 02:00:00+00:00",
+            ],
+            "y_true": [0, 1, 0, 1],
+            "y_prob": [val_prob, 1.0 - val_prob, test_prob, 1.0 - test_prob],
+            "split": ["val", "val", "test", "test"],
+            "experiment": [experiment] * 4,
+            "model": [model] * 4,
+            "candidate": ["default"] * 4,
+            "threshold": [0.5] * 4,
+            "fold": ["F1", "F1", pd.NA, pd.NA],
+            "protocol": [pd.NA, pd.NA, pd.NA, pd.NA],
+        }
+    )
+    metrics = pd.DataFrame(
+        {
+            "experiment": [experiment, experiment],
+            "model": [model, model],
+            "split": ["val", "test"],
+            "candidate": ["default", "default"],
+            "pr_auc": [0.6, 0.55],
+            "roc_auc": [0.7, 0.68],
+            "precision": [0.5, 0.48],
+            "recall": [0.5, 0.5],
+            "f1": [0.5, 0.49],
+            "accuracy": [0.5, 0.5],
+            "balanced_accuracy": [0.5, 0.5],
+            "positive_rate": [0.5, 0.5],
+            "sample_count": [2, 2],
+            "positive_count": [1, 1],
+            "negative_count": [1, 1],
+            "threshold": [0.5, 0.5],
+        }
+    )
+    sample_manifest.to_csv(output_dir / "sample_manifest.csv", index=False)
+    predictions.to_csv(output_dir / "predictions.csv", index=False)
+    metrics.to_csv(output_dir / "metrics_summary.csv", index=False)
+    (output_dir / "progress.log").write_text(f"[{experiment}] reused\n", encoding="utf-8")
+    return {
+        "sample_manifest": output_dir / "sample_manifest.csv",
+        "metrics_summary": output_dir / "metrics_summary.csv",
+        "predictions": output_dir / "predictions.csv",
+        "progress_log": output_dir / "progress.log",
+    }
 
 
 class NegativePriceRunnerTest(unittest.TestCase):
@@ -360,6 +437,105 @@ class NegativePriceRunnerTest(unittest.TestCase):
             metrics = pd.read_csv(e56_artifacts["metrics_summary"])
             self.assertIn("LateFusion", set(metrics["model"]))
             self.assertTrue(Path(e56_artifacts["member_weights"]).exists())
+
+    def test_late_fusion_reuses_existing_member_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            common_kwargs = {
+                "data_path": data_path,
+                "countries": ("AT", "BE"),
+                "feature_group": "public",
+                "window_hours": 24,
+                "horizon_hours": 1,
+                "split_strategy": "unit",
+                "ffill_limit": 3,
+                "primary_metric": "pr_auc",
+                "random_seed": 42,
+            }
+            e30 = ExperimentConfig(name="E30", models=("Majority",), **common_kwargs)
+            e31 = ExperimentConfig(name="E31", models=("LogisticRegression",), **common_kwargs)
+            e35 = ExperimentConfig(
+                name="E35",
+                models=(),
+                meta_kind="late_fusion",
+                meta_members=("E30", "E31"),
+                **common_kwargs,
+            )
+
+            write_fake_artifacts(out_dir / "cached" / "E30", experiment="E30", model="Majority", val_prob=0.2, test_prob=0.3)
+            write_fake_artifacts(
+                out_dir / "cached" / "E31",
+                experiment="E31",
+                model="LogisticRegression",
+                val_prob=0.4,
+                test_prob=0.6,
+            )
+            config_map = {"E30": e30, "E31": e31, "E35": e35}
+
+            with patch("negative_price_experiments.pipeline.build_default_experiment_configs", return_value=config_map), patch(
+                "negative_price_experiments.pipeline.run_experiment",
+                side_effect=AssertionError("member run should have been reused"),
+            ):
+                artifacts = _run_late_fusion_experiment(
+                    e35,
+                    output_path=out_dir / "E35",
+                    folds=(),
+                    final_train_range=None,
+                    final_test_range=None,
+                    skip_unavailable_models=False,
+                    reporter=None,
+                )
+
+            metrics = pd.read_csv(artifacts["metrics_summary"])
+            self.assertIn("LateFusion", set(metrics["model"]))
+            self.assertTrue(Path(artifacts["member_weights"]).exists())
+
+    def test_repeated_seed_reuses_existing_seed_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            config = ExperimentConfig(
+                name="E60",
+                data_path=data_path,
+                countries=("AT", "BE"),
+                feature_group="public",
+                window_hours=24,
+                horizon_hours=1,
+                models=("Majority",),
+                split_strategy="unit",
+                ffill_limit=3,
+                primary_metric="pr_auc",
+                random_seed=42,
+                repeat_random_seeds=(42, 52),
+            )
+
+            write_fake_artifacts(out_dir / "cached" / "E60_SEED_42", experiment="E60_SEED_42", model="Majority", val_prob=0.2, test_prob=0.3)
+            write_fake_artifacts(out_dir / "cached" / "E60_SEED_52", experiment="E60_SEED_52", model="Majority", val_prob=0.4, test_prob=0.6)
+
+            with patch(
+                "negative_price_experiments.pipeline.run_experiment",
+                side_effect=AssertionError("seed run should have been reused"),
+            ):
+                artifacts = _run_repeated_seed_experiment(
+                    config,
+                    output_path=out_dir / "E60",
+                    folds=(),
+                    final_train_range=None,
+                    final_test_range=None,
+                    skip_unavailable_models=False,
+                    reporter=None,
+                )
+
+            metrics = pd.read_csv(artifacts["metrics_summary"])
+            self.assertIn("raw", set(metrics["seed_aggregation"].dropna()))
+            self.assertTrue({42, 52}.issubset(set(metrics["seed"].dropna().astype(int))))
 
     def test_stacking_and_cross_seed_meta_experiments_smoke_run_with_patched_member_configs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

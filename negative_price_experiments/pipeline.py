@@ -301,6 +301,107 @@ def _resolve_meta_member_configs(config: ExperimentConfig) -> tuple[ExperimentCo
     return tuple(configs[name] for name in config.meta_members)
 
 
+def _artifact_bundle_from_dir(experiment_dir: Path) -> dict[str, Path]:
+    return {
+        "sample_manifest": experiment_dir / "sample_manifest.csv",
+        "metrics_summary": experiment_dir / "metrics_summary.csv",
+        "predictions": experiment_dir / "predictions.csv",
+        "progress_log": experiment_dir / "progress.log",
+    }
+
+
+def _is_complete_artifact_bundle(artifacts: dict[str, Path]) -> bool:
+    for key in ("sample_manifest", "metrics_summary", "predictions"):
+        path = artifacts[key]
+        if not path.exists() or not path.is_file():
+            return False
+        if path.stat().st_size <= 1:
+            return False
+    progress_log = artifacts["progress_log"]
+    return progress_log.exists() and progress_log.is_file()
+
+
+def _artifact_bundle_mtime(experiment_dir: Path) -> float:
+    metrics_path = experiment_dir / "metrics_summary.csv"
+    if metrics_path.exists():
+        return float(metrics_path.stat().st_mtime)
+    return float(experiment_dir.stat().st_mtime)
+
+
+def _find_reusable_artifacts(
+    experiment_name: str,
+    *,
+    preferred_dir: Path | None = None,
+    search_root: Path | None = None,
+) -> dict[str, Path] | None:
+    candidate_dirs: list[Path] = []
+    if preferred_dir is not None:
+        candidate_dirs.append(preferred_dir.resolve())
+
+    search_roots: list[Path] = []
+    if search_root is not None:
+        search_roots.append(search_root.resolve())
+    default_output_root = (Path.cwd() / "outputs").resolve()
+    if default_output_root.exists():
+        search_roots.append(default_output_root)
+
+    seen_dirs: set[Path] = set()
+    for root in search_roots:
+        if not root.exists():
+            continue
+        try:
+            matches = [path.resolve() for path in root.rglob(experiment_name) if path.is_dir()]
+        except OSError:
+            continue
+        matches.sort(key=_artifact_bundle_mtime, reverse=True)
+        candidate_dirs.extend(matches)
+
+    for candidate_dir in candidate_dirs:
+        if candidate_dir in seen_dirs:
+            continue
+        seen_dirs.add(candidate_dir)
+        artifacts = _artifact_bundle_from_dir(candidate_dir)
+        if _is_complete_artifact_bundle(artifacts):
+            return artifacts
+    return None
+
+
+def _run_or_reuse_artifacts(
+    experiment_config: ExperimentConfig,
+    *,
+    nested_output_root: Path,
+    search_root: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter,
+    log_prefix: tuple[str, ...],
+) -> tuple[dict[str, Path], bool]:
+    preferred_dir = (nested_output_root / experiment_config.name).resolve()
+    reusable = _find_reusable_artifacts(
+        experiment_config.name,
+        preferred_dir=preferred_dir,
+        search_root=search_root,
+    )
+    if reusable is not None:
+        reporter.log(
+            log_prefix,
+            f"reused existing artifacts | source={reusable['metrics_summary'].parent}",
+        )
+        return reusable, True
+    artifacts = run_experiment(
+        experiment_config,
+        output_dir=nested_output_root,
+        folds=folds,
+        final_train_range=final_train_range,
+        final_test_range=final_test_range,
+        skip_unavailable_models=skip_unavailable_models,
+        reporter=reporter,
+    )
+    return artifacts, False
+
+
 def _meta_metric_score(metrics: pd.DataFrame, *, split: str, metric: str) -> float:
     if metrics.empty or metric not in metrics.columns:
         return float("nan")
@@ -879,14 +980,16 @@ def _run_late_fusion_experiment(
             (config.name, member_config.name),
             f"member {member_index}/{len(member_configs)} started",
         )
-        member_artifacts[member_config.name] = run_experiment(
+        member_artifacts[member_config.name], reused = _run_or_reuse_artifacts(
             member_config,
-            output_dir=output_path / "member_runs",
+            nested_output_root=output_path / "member_runs",
+            search_root=output_path.parent,
             folds=folds,
             final_train_range=final_train_range,
             final_test_range=final_test_range,
             skip_unavailable_models=skip_unavailable_models,
             reporter=reporter,
+            log_prefix=(config.name, member_config.name),
         )
         reporter.log_step(
             (config.name, member_config.name),
@@ -895,7 +998,7 @@ def _run_late_fusion_experiment(
             total=len(member_configs),
             loop_started_at=member_loop_started_at,
             step_started_at=member_started_at,
-            extra="completed",
+            extra="reused" if reused else "completed",
         )
 
     artifacts = _build_late_fusion_artifacts(config, output_path=output_path, member_artifacts=member_artifacts)
@@ -937,14 +1040,16 @@ def _run_stacking_experiment(
             (config.name, member_config.name),
             f"member {member_index}/{len(member_configs)} started",
         )
-        member_artifacts[member_config.name] = run_experiment(
+        member_artifacts[member_config.name], reused = _run_or_reuse_artifacts(
             member_config,
-            output_dir=output_path / "member_runs",
+            nested_output_root=output_path / "member_runs",
+            search_root=output_path.parent,
             folds=folds,
             final_train_range=final_train_range,
             final_test_range=final_test_range,
             skip_unavailable_models=skip_unavailable_models,
             reporter=reporter,
+            log_prefix=(config.name, member_config.name),
         )
         reporter.log_step(
             (config.name, member_config.name),
@@ -953,7 +1058,7 @@ def _run_stacking_experiment(
             total=len(member_configs),
             loop_started_at=member_loop_started_at,
             step_started_at=member_started_at,
-            extra="completed",
+            extra="reused" if reused else "completed",
         )
 
     artifacts = _build_stacking_artifacts(config, output_path=output_path, member_artifacts=member_artifacts)
@@ -998,14 +1103,16 @@ def _run_cross_seed_ensemble_experiment(
             (config.name, member_config.name),
             f"member {member_index}/{len(member_configs)} started",
         )
-        member_artifacts[member_config.name] = run_experiment(
+        member_artifacts[member_config.name], reused = _run_or_reuse_artifacts(
             member_config,
-            output_dir=output_path / "member_runs",
+            nested_output_root=output_path / "member_runs",
+            search_root=output_path.parent,
             folds=folds,
             final_train_range=final_train_range,
             final_test_range=final_test_range,
             skip_unavailable_models=skip_unavailable_models,
             reporter=reporter,
+            log_prefix=(config.name, member_config.name),
         )
         reporter.log_step(
             (config.name, member_config.name),
@@ -1014,7 +1121,7 @@ def _run_cross_seed_ensemble_experiment(
             total=len(member_configs),
             loop_started_at=member_loop_started_at,
             step_started_at=member_started_at,
-            extra="completed",
+            extra="reused" if reused else "completed",
         )
 
     artifacts = _build_cross_seed_ensemble_artifacts(config, output_path=output_path, member_artifacts=member_artifacts)
@@ -1063,14 +1170,16 @@ def _run_calibration_experiment(
             nested_member_artifacts: dict[str, dict[str, Path]] = {}
             for nested_member in _resolve_meta_member_configs(candidate_config):
                 if nested_member.name not in candidate_artifacts:
-                    candidate_artifacts[nested_member.name] = run_experiment(
+                    candidate_artifacts[nested_member.name], _ = _run_or_reuse_artifacts(
                         nested_member,
-                        output_dir=output_path / "candidate_runs",
+                        nested_output_root=output_path / "candidate_runs",
+                        search_root=output_path.parent,
                         folds=folds,
                         final_train_range=final_train_range,
                         final_test_range=final_test_range,
                         skip_unavailable_models=skip_unavailable_models,
                         reporter=reporter,
+                        log_prefix=(config.name, nested_member.name),
                     )
                 nested_member_artifacts[nested_member.name] = candidate_artifacts[nested_member.name]
             candidate_output_path = (output_path / "candidate_runs" / candidate_config.name).resolve()
@@ -1080,14 +1189,16 @@ def _run_calibration_experiment(
                 member_artifacts=nested_member_artifacts,
             )
         else:
-            candidate_artifacts[candidate_config.name] = run_experiment(
+            candidate_artifacts[candidate_config.name], _ = _run_or_reuse_artifacts(
                 candidate_config,
-                output_dir=output_path / "candidate_runs",
+                nested_output_root=output_path / "candidate_runs",
+                search_root=output_path.parent,
                 folds=folds,
                 final_train_range=final_train_range,
                 final_test_range=final_test_range,
                 skip_unavailable_models=skip_unavailable_models,
                 reporter=reporter,
+                log_prefix=(config.name, candidate_config.name),
             )
         reporter.log_step(
             (config.name, candidate_config.name),
@@ -1231,14 +1342,16 @@ def _run_repeated_seed_experiment(
             (config.name, f"seed={seed}"),
             f"seed {seed_index}/{len(seeds)} started",
         )
-        artifacts = run_experiment(
+        artifacts, reused = _run_or_reuse_artifacts(
             seed_config,
-            output_dir=output_path / "seed_runs",
+            nested_output_root=output_path / "seed_runs",
+            search_root=output_path.parent,
             folds=folds,
             final_train_range=final_train_range,
             final_test_range=final_test_range,
             skip_unavailable_models=skip_unavailable_models,
             reporter=reporter,
+            log_prefix=(config.name, f"seed={seed}"),
         )
         seed_artifacts.append((seed, artifacts))
         reporter.log_step(
@@ -1248,7 +1361,7 @@ def _run_repeated_seed_experiment(
             total=len(seeds),
             loop_started_at=seed_loop_started_at,
             step_started_at=seed_started_at,
-            extra="completed",
+            extra="reused" if reused else "completed",
         )
 
     sample_manifest = pd.read_csv(seed_artifacts[0][1]["sample_manifest"])

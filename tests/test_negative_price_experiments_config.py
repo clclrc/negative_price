@@ -279,9 +279,9 @@ class NegativePriceConfigTest(unittest.TestCase):
 
         self.assertEqual(configs["E49"].models, ("GRUMultiMarket",))
         self.assertEqual(configs["E49"].repeat_random_seeds, (42, 52, 62))
-        self.assertEqual(configs["E49"].sequence_learning_rate, 5e-4)
-        self.assertEqual(configs["E49"].sequence_max_epochs, 100)
-        self.assertEqual(configs["E49"].sequence_patience, 15)
+        self.assertEqual(configs["E49"].sequence_learning_rate, 1e-3)
+        self.assertEqual(configs["E49"].sequence_max_epochs, 30)
+        self.assertEqual(configs["E49"].sequence_patience, 5)
 
         self.assertEqual(configs["E50"].models, ("GRUMultiMarketHybrid",))
         self.assertFalse(configs["E50"].use_mechanism_features)

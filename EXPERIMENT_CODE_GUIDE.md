@@ -147,6 +147,11 @@ Important:
 - `E59` is the matched public baseline needed to interpret `E55` as a renewables-track gain rather than as a subset artifact
 - `E60` is the repeated-seed stability check for the `E55` renewables-track line, using the standard sequence training budget
 
+Meta wrappers now prefer artifact reuse before retraining nested members:
+- late-fusion, stacking, cross-seed, calibration, and repeated-seed wrappers first look for complete prior artifacts for the required nested experiment or seed run
+- reuse requires a complete artifact bundle with `sample_manifest.csv`, `metrics_summary.csv`, `predictions.csv`, and `progress.log`
+- if no complete prior bundle is found, the wrapper falls back to rerunning that nested experiment
+
 All default experiment definitions are created in:
 
 - `build_default_experiment_configs(...)`
