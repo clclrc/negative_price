@@ -364,3 +364,26 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E60"].sequence_max_epochs, 30)
         self.assertEqual(configs["E60"].sequence_patience, 5)
         self.assertEqual(configs["E60"].repeat_random_seeds, (42, 52, 62))
+
+    def test_default_configs_include_post_e60_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E61", "E62", "E63", "E64"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E49"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+            self.assertEqual(configs[name].models, ())
+
+        self.assertEqual(configs["E61"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E61"].meta_members, ("E49", "E43"))
+
+        self.assertEqual(configs["E62"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E62"].meta_members, ("E49", "E43", "E44"))
+
+        self.assertEqual(configs["E63"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E63"].meta_members, ("E49", "E42", "E43", "E44"))
+
+        self.assertEqual(configs["E64"].meta_kind, "stacking")
+        self.assertEqual(configs["E64"].meta_members, ("E49", "E42", "E43", "E44"))

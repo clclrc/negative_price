@@ -146,6 +146,10 @@ Important:
 - `E58` extends that ceiling test by fusing the stable multi-market deep line with both strong classical baselines
 - `E59` is the matched public baseline needed to interpret `E55` as a renewables-track gain rather than as a subset artifact
 - `E60` is the repeated-seed stability check for the `E55` renewables-track line, using the standard sequence training budget
+- `E61` tests the direct late-fusion complementarity between the strongest stable deep single-model line and the strongest matched classical single-model baseline
+- `E62` extends that test by combining the stable deep line with the two strongest completed tree baselines
+- `E63` is the current full late-fusion ceiling test across `E49`, `E42`, `E43`, and `E44`
+- `E64` replaces simple validation-`PR-AUC` weighting with an out-of-fold stacking meta-learner over the same strongest completed members
 
 Meta wrappers now prefer artifact reuse before retraining nested members:
 - late-fusion, stacking, cross-seed, calibration, and repeated-seed wrappers first look for complete prior artifacts for the required nested experiment or seed run

@@ -454,3 +454,33 @@ The next family should be designed around stability and complementarity rather t
 These four experiments are now implemented in code because an earlier implementation was explicitly requested.
 
 They should still be interpreted as pending follow-up branches until the `E34-E36` round and then the `E37-E40` round are both completed. The partial `E35` member outputs are still not sufficient to reorder these follow-ups yet.
+
+### **Latest outcome from `E57-E59`**
+
+The next round pushes the score ceiling a little higher, but it also makes the renewables-track interpretation more cautious. `E57`, which fuses the stable multi-market deep line `E49` with `E42 XGBoost`, reaches test `PR-AUC = 0.4216`. That is a real gain over both standalone `E49 = 0.3867` and standalone `E42 = 0.4066`, so the project now has evidence that the deep multi-market representation is complementary not only to `LightGBM` but also to `XGBoost`.
+
+`E58` goes one step further by fusing `E49`, `E42`, and `E44`. It reaches test `PR-AUC = 0.4281`, which is now the strongest completed result in the repository on the matched `20-country + public + window=168 + h=6` task. This means the best current score ceiling comes from combining the strongest stable deep single-model line with both strong tree-based baselines, rather than choosing only one classical branch.
+
+`E59` is scientifically useful even though it does not improve the main score. It supplies the missing `15-country public` comparator on the same renewables-valid subset used by `E55`. `E59` reaches test `PR-AUC = 0.3738`, which is higher than `E55 = 0.3614`. That weakens the earlier temptation to claim that the renewables-track multi-market model is already better than the matched public version. At the same time, the comparison is still not perfectly clean because `E55` was run under the earlier aggressive sequence budget, while `E59` uses the standard `30 epoch / patience 5` budget. The defensible interpretation is therefore that the `GRUMultiMarket` family remains promising on the renewables subset, but the project does not yet have clean evidence that the renewables input track itself gives net gain over the matched public multi-market baseline.
+
+The benchmark picture after `E57-E59` is now:
+
+1. strongest completed overall result: `E58 = E49 + E42 + E44` late fusion, test `PR-AUC = 0.4281`
+2. strongest matched classical single model: `E44 LightGBM`, test `PR-AUC = 0.4139`
+3. strongest stable deep single model: `E49 GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+4. strongest completed two-way deep-plus-classical fusion: `E56 = E49 + E44`, test `PR-AUC = 0.4257`
+
+### **Latest outcome from `E43` and `E60`**
+
+The missing `CatBoost` baseline has now been completed successfully. `E43` reaches test `PR-AUC = 0.4147`, which is only a tiny improvement over `E44 LightGBM = 0.4139`, but it is enough to make `E43` the strongest matched classical single-model baseline currently available in the repository. In practical terms, `E43` and `E44` should now be treated as an almost tied pair of strong tree-based baselines, with `E42 XGBoost = 0.4066` remaining slightly lower. This matters less for narrative bragging rights than for future fusion design: any new score-ceiling ensemble should consider `CatBoost` as a real candidate member rather than assuming `LightGBM` alone is the best tree branch.
+
+`E60` is more consequential for interpretation than for headline score. It is the repeated-seed version of `E55` run under the standard sequence budget, and its mean test `PR-AUC` is only `0.3115`. That is far below the original single-run `E55 = 0.3614`, and also below the matched public comparator `E59 = 0.3738`. The seed variance is small, which means this is not a case where the renewables-track line is very strong but unstable. Instead, the mean itself is weak under the standard budget. The safest conclusion is therefore that the repository no longer has defensible evidence that the current `15-country renewables` `GRUMultiMarket` branch is better than the matched public multi-market baseline. `E55` should now be interpreted as an optimistic one-off result produced under the earlier aggressive training budget, not as the settled renewables-track direction.
+
+The benchmark picture after `E43` and `E60` is now:
+
+1. strongest completed overall result: `E58 = E49 + E42 + E44` late fusion, test `PR-AUC = 0.4281`
+2. strongest matched classical single model: `E43 CatBoost`, test `PR-AUC = 0.4147`
+3. second-strongest matched classical single model: `E44 LightGBM`, test `PR-AUC = 0.4139`
+4. strongest stable deep single model: `E49 GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+
+The next experiment family should therefore stop looking for another immediate standalone deep-model replacement and instead test whether the now-complete set of strong classical baselines can push the fusion ceiling further. The natural sequence is: `E61 = E49 + E43`, `E62 = E49 + E43 + E44`, `E63 = E49 + E42 + E43 + E44`, and then `E64` as a stronger out-of-fold stacker over the same members. In contrast, the current renewables-track branch should be deprioritized until it is re-tested under a cleaner matched budget, because `E60` no longer supports a strong claim that the renewables multi-market line is better than the matched public baseline.
