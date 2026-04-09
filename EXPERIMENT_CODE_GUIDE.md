@@ -161,6 +161,7 @@ Important:
 - `E77` and `E78` are mechanism-aware tree baselines on the main `20-country + public + window=168 + h=6` task; they reuse the existing tabular mechanism-feature path
 - `E79` keeps the `GRUMultiMarket` backbone but augments the sequence input itself with public-derived mechanism channels, rather than adding a separate handcrafted branch
 - `E80` is a conditional score-ceiling wrapper: it reuses or runs `E75`, `E77`, `E78`, and `E79`, selects the strongest validation-time new member among `E77-E79`, then builds a late fusion between `E75` and that selected member
+- `E81` is the fixed low-cost follow-up to `E80`: it skips automatic candidate selection and directly late-fuses `E75` with `E78`
 
 Meta wrappers now prefer artifact reuse before retraining nested members:
 - late-fusion, stacking, cross-seed, calibration, and repeated-seed wrappers first look for complete prior artifacts for the required nested experiment or seed run

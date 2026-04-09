@@ -566,3 +566,39 @@ The most defensible next family is:
 The recommended order is therefore `E77 -> E78 -> E79 -> E80`, with the last step only run if at least one of `E77-E79` is either clearly stronger on its own or visibly complementary in validation behavior. This keeps the next phase focused on creating new information rather than continuing to optimize the same four completed members for vanishingly small gains.
 
 These four experiments are now implemented in code. In particular, `E80` is not a fixed two-member fusion hard-coded in advance; it is wired as a best-member score-ceiling wrapper that keeps `E75` fixed, evaluates `E77-E79` as candidate new members, and then builds a late fusion between `E75` and whichever of `E77-E79` is strongest on validation `PR-AUC`.
+
+### **Latest outcome from `E77-E80`**
+
+The newest phase is useful because it cleanly separates what still has value from what no longer does. `E77`, the mechanism-aware `LightGBM`, reaches test `PR-AUC = 0.3968`. That is not a bad score in isolation, but it is still below both `E43 = 0.4147` and `E44 = 0.4139`, so this branch does not create a stronger classical member and does not justify more follow-up work by itself.
+
+`E78`, the mechanism-aware `CatBoost`, is the real positive result of the round. It reaches test `PR-AUC = 0.4296`, which is materially higher than the earlier `CatBoost` baseline `E43 = 0.4147` and also above `E44 = 0.4139`. More importantly, it lands very close to the repository's current strongest overall result, `E75 = 0.4323`. So this is the first newly trained post-`E75` branch that looks genuinely strong and potentially complementary.
+
+`E79`, in contrast, is a clear negative result. The idea was to strengthen the deep line by adding public-derived mechanism channels directly into the `GRUMultiMarket` sequence input, while keeping the ordinary training budget. But the completed run reaches only test `PR-AUC = 0.2999`, far below `E49 = 0.3867`. So the current mechanism-channel deep variant does not work and should not be treated as a serious continuation path if the project is close to its end.
+
+`E80` is informative mainly because it fails in a revealing way. It is designed to keep `E75` fixed, evaluate `E77-E79` as candidate new members, and then late-fuse `E75` with whichever candidate is strongest on validation `PR-AUC`. In this run it selects `E79`, not `E78`, because `E79` has the highest aggregated validation score among the candidates. But that choice generalizes poorly: `E80` reaches only test `PR-AUC = 0.3870`, far below `E75`. So the lesson is not that `E78` is weak; the lesson is that the current automatic validation-only candidate-selection rule is too fragile and can overfit badly.
+
+The benchmark picture after `E77-E80` is therefore:
+
+1. strongest completed overall result: `E75 = tuned nonlinear stacking(E49, E42, E43, E44)`, test `PR-AUC = 0.4323`
+2. strongest newly trained post-`E75` single model: `E78 = mechanism-aware CatBoost`, test `PR-AUC = 0.4296`
+3. strongest stable deep single model: `E49 = GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+4. failed new deep branch: `E79 = GRUMultiMarket + mechanism sequence channels`, test `PR-AUC = 0.2999`
+
+Given the current state of the project, the most defensible practical recommendation is now very simple. If the goal is to finish the thesis efficiently, the repository already has enough evidence to stop major experimentation: keep `E75` as the best overall score-ceiling benchmark, keep `E49` as the main standalone deep model, and keep `E78` as the strongest newly created classical branch from the final phase. The only extra experiment that still looks worth doing would be one last forced low-cost fusion between `E75` and `E78`, because `E80` does not answer that question cleanly after mis-selecting `E79`. If even that final cheap check is not worth the extra time, the project is already in a defensible stopping position.
+
+This final cheap check is now formalized as `E81`: a fixed late-fusion between `E75` and `E78`. Unlike `E80`, it does not try to choose among `E77-E79`; it simply tests whether the strongest overall existing meta result and the strongest new member from the last phase can still be combined into a slightly stronger closeout result.
+
+### **Latest outcome from `E81`**
+
+`E81` gives the clean closeout answer that `E80` failed to provide. It forces a late-fusion between `E75`, the strongest completed overall meta result before the final check, and `E78`, the strongest genuinely useful new member produced in the last training phase. The result is positive: `E81` reaches test `PR-AUC = 0.4388`, which is higher than `E75 = 0.4323` and higher than `E78 = 0.4296`.
+
+This is important because it clarifies the meaning of the failed `E80` run. `E80` did not prove that the new final-phase members were unhelpful; it only showed that the automatic validation-time candidate-selection rule could misfire by choosing `E79` instead of `E78`. `E81` removes that ambiguity. Once the fusion is forced onto the actually strong new member, the score does rise. So the last round validates the intended story: the repository's strongest overall result comes from combining the strongest previously completed meta-ceiling model with the strongest genuinely useful new trained member from the final phase.
+
+The benchmark picture at the end of the project is therefore:
+
+1. strongest completed overall result: `E81 = late_fusion(E75, E78)`, test `PR-AUC = 0.4388`
+2. strongest pure-meta reference: `E75 = tuned nonlinear stacking(E49, E42, E43, E44)`, test `PR-AUC = 0.4323`
+3. strongest final-phase newly trained single model: `E78 = mechanism-aware CatBoost`, test `PR-AUC = 0.4296`
+4. strongest stable standalone deep model: `E49 = GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+
+At this point the project is in a defensible stopping position. The best overall system has been identified, the strongest standalone deep model has been identified, the strongest single classical model family has been refreshed in the final phase, and the last low-cost uncertainty about whether the new final-phase member could still lift the score ceiling has now been answered positively. Unless the project scope changes, there is no strong reason to continue major experimentation beyond this point.

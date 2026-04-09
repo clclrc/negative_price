@@ -1166,3 +1166,89 @@ The next phase should stop tuning the same completed member set and instead crea
 4. `E80`, but only after at least one of `E77-E79` shows either a standalone gain or a clearly different validation-time error profile
 
 These four experiments are now implemented in code. `E80` is wired as a best-member late-fusion wrapper that keeps `E75` fixed, evaluates `E77-E79` as candidate new members, and fuses `E75` with the strongest candidate by validation `PR-AUC`.
+
+## Actual outcome from `E77-E80`
+
+- `E77 = mechanism-aware LightGBM` does not improve the classical line enough to matter
+- `E78 = mechanism-aware CatBoost` is the only clearly successful new branch in this round
+- `E79 = GRUMultiMarket + mechanism sequence channels` is a negative result despite a long training run
+- `E80` should not be treated as a successful score-ceiling update, because it selected the wrong new member on validation and underperformed badly on test
+
+### Updated benchmark view after `E77-E80`
+
+- `E75` remains the strongest completed overall result, test `PR-AUC = 0.4323`
+- `E78` is now the strongest newly trained single model in this phase, test `PR-AUC = 0.4296`
+- `E43` remains the strongest older classical single-model baseline, test `PR-AUC = 0.4147`
+- `E79` only reaches test `PR-AUC = 0.2999`
+- `E80 = E75 + selected_best(E77,E78,E79)` falls to test `PR-AUC = 0.3870`
+
+### What `E77` tells us
+
+- Public-derived mechanism features are not automatically useful for `LightGBM`
+- `E77 = 0.3968` is below both `E43 = 0.4147` and `E44 = 0.4139`
+- So `E77` should not be kept as a promising new member for future fusion work
+
+### What `E78` tells us
+
+- `E78 = 0.4296` is a real positive result
+- It improves meaningfully over `E43 = 0.4147` and `E44 = 0.4139`
+- It is also only slightly below `E75 = 0.4323`
+- This means the mechanism-aware `CatBoost` branch is the first post-`E75` new member that looks genuinely useful
+
+### What `E79` tells us
+
+- Adding public-derived mechanism channels directly into the `GRUMultiMarket` sequence input does not work in the current form
+- `E79 = 0.2999` is far below `E49 = 0.3867`
+- This branch should be treated as failed and should not be prioritized further if the project is being wrapped up soon
+
+### What `E80` tells us
+
+- `E80` selected `E79` over `E78` because of higher validation `PR-AUC` in the candidate-selection step
+- On test, that choice generalized very poorly and `E80` fell to `0.3870`
+- So the current `best_member_late_fusion` wrapper is not reliable enough to be used as the project's final benchmark-selection rule
+- The practical lesson is not that `E78` is weak; it is that automatic validation-only candidate selection can overfit
+
+### Practical recommendation if the project should end soon
+
+1. Treat `E75` as the current best completed overall result
+2. Treat `E78` as the only clearly valuable new trained branch from the latest phase
+3. Stop investing in `E77`, `E79`, and the current `E80` auto-selection wrapper
+4. If one final low-cost experiment is still acceptable, run a forced fusion between `E75` and `E78`
+5. Otherwise, stop here and write up the story as:
+   strong deep single model (`E49`),
+   strong classical single model (`E78` or `E43`/`E44` family),
+   and best overall score from nonlinear fusion (`E75`)
+
+## Prepared final low-cost closeout experiment
+
+- `E81`: forced late fusion between `E75` and `E78`
+  Goal: answer the only remaining cheap question cleanly after `E80` mis-selected `E79`
+  Direct baseline: `E75`
+  Design rule: fixed members only, no automatic candidate selection, and full artifact reuse whenever possible
+
+## Actual outcome from `E81`
+
+- `E81 = forced late fusion(E75, E78)` succeeds
+- It cleanly answers the final open closeout question left unresolved by `E80`
+
+### Updated benchmark view after `E81`
+
+- `E81` is now the strongest completed overall result, test `PR-AUC = 0.4388`
+- `E75` becomes the strongest standalone meta-ceiling reference, test `PR-AUC = 0.4323`
+- `E78` remains the strongest new final-phase single model, test `PR-AUC = 0.4296`
+- `E49` remains the strongest stable standalone deep model, repeated-seed mean test `PR-AUC = 0.3867`
+
+### What `E81` tells us
+
+- The failure of `E80` was due to bad automatic candidate selection, not because `E78` lacked value
+- Forcing the fusion between `E75` and `E78` lifts test `PR-AUC` from `0.4323` to `0.4388`
+- This is a meaningful final gain for a very cheap artifact-reuse experiment
+- The weight split is still balanced enough to support a complementarity interpretation rather than domination by one member
+
+### Final practical recommendation
+
+1. Use `E81` as the best completed overall result in the thesis
+2. Use `E75` as the strongest reusable pure-meta reference
+3. Use `E78` as the strongest final-phase newly trained single model
+4. Use `E49` as the main standalone deep-learning reference
+5. Stop major experimentation here unless a non-trivial new project objective is introduced

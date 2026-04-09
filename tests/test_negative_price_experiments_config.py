@@ -473,7 +473,7 @@ class NegativePriceConfigTest(unittest.TestCase):
     def test_default_configs_include_new_member_generation_follow_ups(self) -> None:
         configs = build_default_experiment_configs(Path("toy.csv"))
 
-        for name in ("E77", "E78", "E79", "E80"):
+        for name in ("E77", "E78", "E79", "E80", "E81"):
             self.assertIn(name, configs)
             self.assertEqual(configs[name].countries, configs["E49"].countries)
             self.assertEqual(configs[name].feature_group, "public")
@@ -498,3 +498,7 @@ class NegativePriceConfigTest(unittest.TestCase):
         self.assertEqual(configs["E80"].models, ())
         self.assertEqual(configs["E80"].meta_kind, "best_member_late_fusion")
         self.assertEqual(configs["E80"].meta_members, ("E75", "E77", "E78", "E79"))
+
+        self.assertEqual(configs["E81"].models, ())
+        self.assertEqual(configs["E81"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E81"].meta_members, ("E75", "E78"))

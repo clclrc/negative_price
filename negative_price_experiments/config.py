@@ -1189,6 +1189,17 @@ def build_default_experiment_configs(data_path: str | Path) -> dict[str, Experim
             meta_members=("E75", "E77", "E78", "E79"),
             **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
         ),
+        "E81": ExperimentConfig(
+            name="E81",
+            countries=MAIN_COUNTRIES,
+            feature_group="public",
+            window_hours=168,
+            horizon_hours=6,
+            models=(),
+            meta_kind="late_fusion",
+            meta_members=("E75", "E78"),
+            **{key: value for key, value in common.items() if key not in {"models", "window_hours"}},
+        ),
     }
 
 
