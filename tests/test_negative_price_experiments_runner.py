@@ -18,8 +18,10 @@ from negative_price_experiments.pipeline import (
     _merge_member_prediction_frames,
     _meta_metric_score,
     _normalize_member_weights,
+    _run_best_member_late_fusion_experiment,
     _run_late_fusion_experiment,
     _run_repeated_seed_experiment,
+    _run_stacking_experiment,
     _weighted_member_probability,
     run_experiment,
     run_transfer_experiment,
@@ -536,6 +538,142 @@ class NegativePriceRunnerTest(unittest.TestCase):
             metrics = pd.read_csv(artifacts["metrics_summary"])
             self.assertIn("raw", set(metrics["seed_aggregation"].dropna()))
             self.assertTrue({42, 52}.issubset(set(metrics["seed"].dropna().astype(int))))
+
+    def test_grouped_stacking_reuses_existing_member_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            common_kwargs = {
+                "data_path": data_path,
+                "countries": ("AT", "BE"),
+                "feature_group": "public",
+                "window_hours": 24,
+                "horizon_hours": 1,
+                "split_strategy": "unit",
+                "ffill_limit": 3,
+                "primary_metric": "pr_auc",
+                "random_seed": 42,
+            }
+            e30 = ExperimentConfig(name="E30", models=("Majority",), **common_kwargs)
+            e31 = ExperimentConfig(name="E31", models=("LogisticRegression",), **common_kwargs)
+            e69 = ExperimentConfig(
+                name="E69",
+                models=(),
+                meta_kind="stacking",
+                meta_members=("E30", "E31"),
+                meta_group_strategy="country",
+                **common_kwargs,
+            )
+
+            write_fake_artifacts(out_dir / "cached" / "E30", experiment="E30", model="Majority", val_prob=0.2, test_prob=0.3)
+            write_fake_artifacts(
+                out_dir / "cached" / "E31",
+                experiment="E31",
+                model="LogisticRegression",
+                val_prob=0.4,
+                test_prob=0.6,
+            )
+            config_map = {"E30": e30, "E31": e31, "E69": e69}
+
+            with patch("negative_price_experiments.pipeline.build_default_experiment_configs", return_value=config_map), patch(
+                "negative_price_experiments.pipeline.run_experiment",
+                side_effect=AssertionError("member run should have been reused"),
+            ):
+                artifacts = _run_stacking_experiment(
+                    e69,
+                    output_path=out_dir / "E69",
+                    folds=(),
+                    final_train_range=None,
+                    final_test_range=None,
+                    skip_unavailable_models=False,
+                    reporter=None,
+                )
+
+            metrics = pd.read_csv(artifacts["metrics_summary"])
+            self.assertIn("StackingLogisticRegression", set(metrics["model"]))
+            coefficients = pd.read_csv(artifacts["stacking_coefficients"])
+            self.assertIn("stacker_group", coefficients.columns)
+
+    def test_best_member_late_fusion_reuses_existing_member_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            data_path = tmp_path / "toy.csv"
+            out_dir = tmp_path / "out"
+            build_runner_frame().to_csv(data_path, index=False)
+
+            common_kwargs = {
+                "data_path": data_path,
+                "countries": ("AT", "BE"),
+                "feature_group": "public",
+                "window_hours": 24,
+                "horizon_hours": 1,
+                "split_strategy": "unit",
+                "ffill_limit": 3,
+                "primary_metric": "pr_auc",
+                "random_seed": 42,
+            }
+            e75 = ExperimentConfig(name="E75", models=("Majority",), **common_kwargs)
+            e77 = ExperimentConfig(name="E77", models=("LogisticRegression",), **common_kwargs)
+            e78 = ExperimentConfig(name="E78", models=("LogisticRegression",), **common_kwargs)
+            e79 = ExperimentConfig(name="E79", models=("LogisticRegression",), **common_kwargs)
+            e80 = ExperimentConfig(
+                name="E80",
+                models=(),
+                meta_kind="best_member_late_fusion",
+                meta_members=("E75", "E77", "E78", "E79"),
+                **common_kwargs,
+            )
+
+            write_fake_artifacts(out_dir / "cached" / "E75", experiment="E75", model="Majority", val_prob=0.2, test_prob=0.3)
+            write_fake_artifacts(
+                out_dir / "cached" / "E77",
+                experiment="E77",
+                model="LogisticRegression",
+                val_prob=0.45,
+                test_prob=0.55,
+            )
+            write_fake_artifacts(
+                out_dir / "cached" / "E78",
+                experiment="E78",
+                model="LogisticRegression",
+                val_prob=0.6,
+                test_prob=0.7,
+            )
+            write_fake_artifacts(
+                out_dir / "cached" / "E79",
+                experiment="E79",
+                model="LogisticRegression",
+                val_prob=0.35,
+                test_prob=0.4,
+            )
+            for experiment_name, score in (("E77", 0.58), ("E78", 0.72), ("E79", 0.51)):
+                metrics_path = out_dir / "cached" / experiment_name / "metrics_summary.csv"
+                metrics = pd.read_csv(metrics_path)
+                metrics.loc[metrics["split"] == "val", "pr_auc"] = score
+                metrics.to_csv(metrics_path, index=False)
+            config_map = {"E75": e75, "E77": e77, "E78": e78, "E79": e79, "E80": e80}
+
+            with patch("negative_price_experiments.pipeline.build_default_experiment_configs", return_value=config_map), patch(
+                "negative_price_experiments.pipeline.run_experiment",
+                side_effect=AssertionError("member run should have been reused"),
+            ):
+                artifacts = _run_best_member_late_fusion_experiment(
+                    e80,
+                    output_path=out_dir / "E80",
+                    folds=(),
+                    final_train_range=None,
+                    final_test_range=None,
+                    skip_unavailable_models=False,
+                    reporter=None,
+                )
+
+            metrics = pd.read_csv(artifacts["metrics_summary"])
+            candidate_scores = pd.read_csv(artifacts["candidate_scores"])
+            self.assertIn("LateFusion", set(metrics["model"]))
+            self.assertEqual(candidate_scores.iloc[0]["candidate_experiment"], "E78")
 
     def test_stacking_and_cross_seed_meta_experiments_smoke_run_with_patched_member_configs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -920,5 +920,249 @@ The next round should prioritize score-ceiling fusion rather than further standa
 - `E60` weakens the case for spending the next round on the current renewables-track branch
 - All new experiments in this family should use the standard training budget where applicable: `lr=1e-3`, `max_epochs=30`, `patience=5`
 
+## Actual outcome from `E61-E64`
+
+- `E61` is positive but does not exceed the best completed fusion
+- `E62` improves over `E56`, but still does not beat the strongest three-way result
+- `E63` becomes the new strongest completed result in the repository
+- `E64` shows that the current stacking meta-learner is worse than the simple weighted late-fusion ceiling
+
+### Updated benchmark view after `E61-E64`
+
+- Strongest completed overall result is now `E63 = E49 + E42 + E43 + E44`, test `PR-AUC = 0.4284`
+- Second-strongest completed result is `E58 = E49 + E42 + E44`, test `PR-AUC = 0.4281`
+- Third-strongest completed result is `E62 = E49 + E43 + E44`, test `PR-AUC = 0.4272`
+- Best simpler two-way deep-plus-classical fusion is `E56 = E49 + E44`, test `PR-AUC = 0.4257`
+- Strongest matched classical single-model baseline remains `E43 CatBoost`, test `PR-AUC = 0.4147`
+- Strongest stable deep single-model benchmark remains `E49 GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+
+### What `E61-E63` tell us
+
+- `E61 = E49 + E43` reaches test `PR-AUC = 0.4230`
+- `E62 = E49 + E43 + E44` reaches test `PR-AUC = 0.4272`
+- `E63 = E49 + E42 + E43 + E44` reaches test `PR-AUC = 0.4284`
+- This means:
+  the deep line is complementary to `CatBoost`,
+  the pair `E43 + E44` is slightly stronger than `E43` alone,
+  and the full four-member fusion gives the highest ceiling seen so far
+- However, the gain from `E58` to `E63` is very small, so the project is likely close to the current simple-fusion ceiling under this task definition
+
+### What `E64` tells us
+
+- `E64` reaches test `PR-AUC = 0.4215`
+- That is below `E61`, `E62`, `E63`, and `E58`
+- The current out-of-fold logistic stacker therefore does not improve on the simpler validation-`PR-AUC` weighted late fusion
+- Future score-ceiling work should prefer the late-fusion line over the current stacking formulation unless the stacker design itself is changed materially
+
+### Updated recommended order after `E61-E64`
+
+1. Keep `E49` as the main standalone deep architecture reference
+2. Keep `E63` as the strongest overall score-ceiling benchmark
+3. Keep `E58` as the simpler three-member late-fusion reference because it is almost tied with `E63`
+4. De-prioritize the current stacking line (`E64`)
+5. Do not spend the next round on the current renewables-track branch unless it is redesigned under a cleaner matched setup
+
+## Prepared follow-up experiments after `E61-E64`
+
+The next round should test context-aware fusion rather than more standalone model churn.
+
+### Why this is the right shift
+
+- `E63` only beats `E58` by a tiny margin, so the current global weighted late-fusion is likely near its simple ceiling
+- `E64` shows that the current global logistic stacker is not a better replacement
+- The most plausible remaining gain is that complementarity is not stationary:
+  different countries, seasons, or operating regimes may prefer different members
+
+### Proposed next experiments
+
+- `E65`: nonlinear OOF stacker over `E49`, `E42`, `E43`, and `E44`
+  Goal: replace the weak global logistic stacker with a stronger tree-based meta-learner such as `CatBoost` or `LightGBM`
+  Direct baseline: `E64`, then `E63`
+- `E66`: country-aware late fusion over `E49`, `E42`, `E43`, and `E44`
+  Goal: fit separate validation-time fusion weights by country or by small country clusters
+  Direct baseline: `E63`
+- `E67`: regime-aware late fusion over `E49`, `E42`, `E43`, and `E44`
+  Goal: fit separate fusion weights by broad temporal regime such as season or weekday/weekend
+  Direct baseline: `E63`
+- `E68`: context-aware meta-learner using member probabilities plus light context features
+  Goal: combine member probabilities with simple context such as `country`, `month`, `hour`, and `is_weekend_local`
+  Direct baseline: the best result among `E65-E67`
+
+### Recommended order
+
+1. `E65`
+2. `E66`
+3. `E67`
+4. `E68`
+
+### Practical note
+
+- These experiments should mostly reuse already completed member artifacts rather than retraining the base models
+- They should therefore be much cheaper than another deep-model search round
+
 ## Maintenance rule
 - Whenever a materially new direction judgment is made, update this file so later threads can see the latest recommended roadmap.
+
+## Actual outcome from `E65-E68`
+
+- `E65` becomes the new strongest completed result in the repository
+- `E66` and `E67` show that grouped late-fusion by country or coarse temporal regime is viable, but neither beats the best global nonlinear stacker
+- `E68` shows that the current context-aware LightGBM stacker is worse than the simpler nonlinear stacker over member probabilities alone
+
+### Updated benchmark view after `E65-E68`
+
+- Strongest completed overall result is now `E65 = nonlinear stacking(E49, E42, E43, E44)`, test `PR-AUC = 0.4321`
+- Second-strongest completed result is `E63 = E49 + E42 + E43 + E44`, test `PR-AUC = 0.4284`
+- Third-strongest completed result is `E58 = E49 + E42 + E44`, test `PR-AUC = 0.4281`
+- Country-aware grouped fusion `E66` reaches test `PR-AUC = 0.4279`
+- Regime-aware grouped fusion `E67` reaches test `PR-AUC = 0.4280`
+- Context-aware stacker `E68` reaches test `PR-AUC = 0.3997`
+- Strongest matched classical single-model baseline remains `E43 CatBoost`, test `PR-AUC = 0.4147`
+- Strongest stable deep single-model benchmark remains `E49 GRUMultiMarket`, repeated-seed mean test `PR-AUC = 0.3867`
+
+### What `E65` tells us
+
+- A stronger nonlinear meta-learner is the first post-`E63` direction that produces a clear new gain
+- `E65 = StackingLightGBM(E49, E42, E43, E44)` reaches test `PR-AUC = 0.4321`
+- That beats `E63 = 0.4284` by a non-trivial margin relative to the tiny `E58 -> E63` gain
+- This means the project was not yet at the true fusion ceiling; it was at the ceiling of simple validation-`PR-AUC` weighted averaging
+
+### What `E66` and `E67` tell us
+
+- `E66` learns country-specific fusion weights and reaches test `PR-AUC = 0.4279`
+- `E67` learns season/weekpart-specific fusion weights and reaches test `PR-AUC = 0.4280`
+- Both are competitive with `E58` and close to `E63`, so the context-dependent complementarity hypothesis is directionally reasonable
+- But neither grouped late-fusion beats the stronger nonlinear stacker in `E65`
+- The current takeaway is therefore:
+  grouped weighting is interesting for interpretation,
+  but not the best pure score-maximization path right now
+
+### What `E68` tells us
+
+- `E68` adds light context features (`country`, `month`, `hour`, `is_weekend`) to the nonlinear stacker
+- It falls to test `PR-AUC = 0.3997`
+- That is below `E65`, `E66`, `E67`, `E63`, and even below the strongest classical single-model baseline
+- The current context-augmented stacker is therefore not a good next main line
+
+### Updated recommended order after `E65-E68`
+
+1. Keep `E65` as the strongest overall benchmark
+2. Keep `E63` as the strongest simple late-fusion reference
+3. Keep `E58` as the leaner three-member late-fusion reference
+4. Keep `E49` as the main standalone deep architecture reference
+5. De-prioritize the current grouped-fusion line (`E66`, `E67`) for score chasing, while keeping it available for interpretation
+6. De-prioritize the current context-aware stacker (`E68`)
+
+## Actual outcome from `E69-E72`
+
+- `E69` and `E70` show that grouped nonlinear stacking is not a good score-maximization path in the current setup
+- `E71` is competitive but still does not beat `E65`
+- `E72` is weaker than `E71`, which reinforces that `XGBoost` is the more useful complementary tree branch in the current stacking line
+
+### Updated benchmark view after `E69-E72`
+
+- Strongest completed overall result remains `E65 = nonlinear stacking(E49, E42, E43, E44)`, test `PR-AUC = 0.4321`
+- Best grouped-stacking result is only `E69`, test `PR-AUC = 0.4014`
+- Best three-member nonlinear stacker in this round is `E71 = stacking(E49, E42, E44)`, test `PR-AUC = 0.4288`
+- `E72 = stacking(E49, E43, E44)` reaches test `PR-AUC = 0.4227`
+- `E70` is a strong negative result at test `PR-AUC = 0.2521`
+
+### What `E69` and `E70` tell us
+
+- Grouped nonlinear stacking by country or by broad temporal regime overfits badly relative to the global nonlinear stacker
+- `E69` reaches only `0.4014` on test despite very high validation performance
+- `E70` collapses further to `0.2521`
+- So the repository should not keep pushing the current grouped-stacking line as the next score-ceiling direction
+
+### What `E71` and `E72` tell us
+
+- Dropping `CatBoost` but keeping `E49 + E42 + E44` still gives a strong result: `E71 = 0.4288`
+- Dropping `XGBoost` and keeping `E49 + E43 + E44` is weaker: `E72 = 0.4227`
+- This suggests:
+  `E42` contributes more unique meta-signal than `E43` in the current nonlinear stacking family,
+  while `E43` is still useful enough that the full four-member `E65` remains best
+
+### Updated recommended order after `E69-E72`
+
+1. Keep `E65` as the strongest overall benchmark
+2. Keep `E63` and `E58` as strong simpler late-fusion references
+3. Keep `E71` as the strongest reduced-member nonlinear stacker reference
+4. Stop prioritizing grouped nonlinear stacking (`E69`, `E70`)
+5. Continue one more low-cost pure-meta iteration only on:
+   the remaining untested `E49 + E42 + E43` subset and
+   LightGBM meta-stacker hyperparameter variants around `E65`
+
+## Actual outcome from `E73-E76`
+
+- `E73-E76` confirm that the remaining pure-meta gains are now extremely small
+- `E75` becomes the new best completed result, but only by a tiny margin over `E65`
+- No reduced-member variant beats the full four-member nonlinear stacker
+
+### Updated benchmark view after `E73-E76`
+
+- Strongest completed overall result is now `E75 = tuned nonlinear stacking(E49, E42, E43, E44)`, test `PR-AUC = 0.4323`
+- `E74 = regularized nonlinear stacking(E49, E42, E43, E44)` reaches `0.4322`
+- `E65 = default nonlinear stacking(E49, E42, E43, E44)` remains essentially tied at `0.4321`
+- Best reduced-member nonlinear stacker remains `E76 = tuned stacking(E49, E42, E44)`, test `PR-AUC = 0.4289`
+- `E73 = stacking(E49, E42, E43)` reaches `0.4260`
+
+### What `E73` tells us
+
+- The last missing high-value subset `E49 + E42 + E43` does not beat the best four-member stacker
+- This means `E44` still contributes enough useful signal that removing it is not beneficial in the current nonlinear stacker family
+
+### What `E74-E76` tell us
+
+- LightGBM meta-stacker hyperparameter tuning can still move the score slightly
+- However, the gain from `E65 = 0.4321` to `E75 = 0.4323` is extremely small
+- `E74` and `E75` both confirm that the full four-member member set is already close to the practical pure-meta ceiling
+- `E76` shows that even after tuning, the strongest reduced-member variant still does not beat the best four-member variant
+
+### Final recommendation for the pure no-retrain line
+
+1. Use `E75` as the best completed overall score-ceiling benchmark
+2. Keep `E65` as the main simpler nonlinear-stacking reference because it is essentially tied with `E75`
+3. Keep `E63` and `E58` as the main weighted late-fusion references
+4. Keep `E49` as the main standalone deep architecture reference
+5. Treat the current pure-meta no-retrain line as close to exhausted:
+   grouped variants fail,
+   context-aware stacking fails,
+   subset variants do not win,
+   and hyperparameter tuning only adds negligible gains
+
+## Prepared next experiments after `E73-E76`
+
+The next phase should stop tuning the same completed member set and instead create one new genuinely different base-model branch that can be added back into the fusion ceiling.
+
+### Why this is the right shift
+
+- `E75` only improves on `E65` by a tiny amount
+- The strongest pure-meta member set is now very stable and very hard to improve further without new signal
+- So the only realistic way to get another meaningful gain is:
+  train at least one new branch with a different input representation,
+  then test whether it is complementary to `E75`
+
+### Proposed next experiments
+
+- `E77`: mechanism-aware `LightGBM` on the main `20-country + public + 168h + h=6` task
+  Goal: create a stronger or at least more complementary tree member by adding only public-derived mechanism features such as recent price minima, volatility, ramps, and cross-market dispersion summaries
+  Direct baselines: `E44`, then `E43`
+- `E78`: mechanism-aware `CatBoost` on the same task and same new feature family
+  Goal: test whether the same mechanism-aware tabular view is more natural for `CatBoost` than for `LightGBM`
+  Direct baselines: `E43`, then `E44`
+- `E79`: `GRUMultiMarket` with public-derived mechanism channels added directly to the sequence input
+  Goal: create a new deep member that is different from `E49` without reverting to the already weak late-branch fusion design used by `E50/E51`
+  Direct baseline: `E49`
+  Default sequence budget: keep the standard `lr=1e-3`, `max_epochs=30`, `patience=5`
+- `E80`: score-ceiling fusion between `E75` and the best genuinely new member from `E77-E79`
+  Goal: test whether the newly trained branch adds non-redundant signal beyond the current best pure-meta ceiling
+  Direct baseline: `E75`
+
+### Recommended order
+
+1. `E77`
+2. `E78`
+3. `E79`
+4. `E80`, but only after at least one of `E77-E79` shows either a standalone gain or a clearly different validation-time error profile
+
+These four experiments are now implemented in code. `E80` is wired as a best-member late-fusion wrapper that keeps `E75` fixed, evaluates `E77-E79` as candidate new members, and fuses `E75` with the strongest candidate by validation `PR-AUC`.

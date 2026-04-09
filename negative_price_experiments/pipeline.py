@@ -18,7 +18,7 @@ from .config import (
     build_default_experiment_configs,
 )
 from .data import TabularScaler, prepare_experiment_data
-from .metrics import add_month_column, compute_binary_metrics, find_best_threshold_f1, summarize_prediction_frame
+from .metrics import add_month_column, compute_binary_metrics, find_best_threshold_f1, safe_average_precision, summarize_prediction_frame
 from .models import (
     DependencyUnavailableError,
     apply_probability_calibrator,
@@ -129,6 +129,16 @@ def run_experiment(
         )
     if config.meta_kind == "calibration":
         return _run_calibration_experiment(
+            config,
+            output_path=output_path,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+        )
+    if config.meta_kind == "best_member_late_fusion":
+        return _run_best_member_late_fusion_experiment(
             config,
             output_path=output_path,
             folds=folds,
@@ -603,6 +613,159 @@ def _build_meta_prediction_frame(
     return frame
 
 
+def _meta_context_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    timestamps = pd.to_datetime(frame["anchor_time"], utc=True)
+    month = timestamps.dt.month.astype(int)
+    weekday = timestamps.dt.weekday.astype(int)
+    season = month.map(
+        {
+            12: "winter",
+            1: "winter",
+            2: "winter",
+            3: "spring",
+            4: "spring",
+            5: "spring",
+            6: "summer",
+            7: "summer",
+            8: "summer",
+            9: "autumn",
+            10: "autumn",
+            11: "autumn",
+        }
+    )
+    is_weekend = (weekday >= 5).astype(int)
+    return pd.DataFrame(
+        {
+            "country": frame["country"].astype(str),
+            "month": month,
+            "hour": timestamps.dt.hour.astype(int),
+            "weekday": weekday,
+            "is_weekend": is_weekend,
+            "season": season.astype(str),
+            "season_weekpart": season.astype(str) + "_" + np.where(is_weekend.astype(bool), "weekend", "weekday"),
+        },
+        index=frame.index,
+    )
+
+
+def _meta_group_labels(frame: pd.DataFrame, *, strategy: str) -> pd.Series:
+    context = _meta_context_frame(frame)
+    if strategy == "country":
+        return context["country"].astype(str)
+    if strategy == "season_weekpart":
+        return context["season_weekpart"].astype(str)
+    raise ValueError(f"Unsupported meta_group_strategy: {strategy}")
+
+
+def _global_member_pr_auc_scores(merged: pd.DataFrame, member_names: tuple[str, ...]) -> dict[str, float]:
+    y_true = merged["y_true"].to_numpy(dtype=int)
+    return {
+        member_name: safe_average_precision(y_true, merged[f"y_prob__{member_name}"].to_numpy(dtype=np.float32))
+        for member_name in member_names
+    }
+
+
+def _compute_grouped_member_weights(
+    merged: pd.DataFrame,
+    *,
+    member_names: tuple[str, ...],
+    strategy: str,
+) -> tuple[dict[str, dict[str, float]], dict[str, float], pd.DataFrame]:
+    global_weights = _normalize_member_weights(_global_member_pr_auc_scores(merged, member_names))
+    group_labels = _meta_group_labels(merged, strategy=strategy)
+    weight_rows: list[dict[str, object]] = []
+    grouped_weights: dict[str, dict[str, float]] = {}
+    for group_value, group in merged.groupby(group_labels, sort=False, dropna=False):
+        group_name = str(group_value)
+        y_true = group["y_true"].to_numpy(dtype=int)
+        if np.unique(y_true).size < 2 or int(y_true.sum()) < 20:
+            member_weights = dict(global_weights)
+            raw_scores = {member_name: float("nan") for member_name in member_names}
+        else:
+            raw_scores = {
+                member_name: safe_average_precision(y_true, group[f"y_prob__{member_name}"].to_numpy(dtype=np.float32))
+                for member_name in member_names
+            }
+            member_weights = _normalize_member_weights(raw_scores)
+        grouped_weights[group_name] = member_weights
+        for member_name in member_names:
+            weight_rows.append(
+                {
+                    "fusion_group": group_name,
+                    "group_strategy": strategy,
+                    "member_experiment": member_name,
+                    "val_pr_auc": raw_scores.get(member_name),
+                    "weight": member_weights.get(member_name),
+                }
+            )
+    return grouped_weights, global_weights, pd.DataFrame(weight_rows)
+
+
+def _weighted_member_probability_by_group(
+    merged: pd.DataFrame,
+    *,
+    group_labels: pd.Series,
+    grouped_weights: dict[str, dict[str, float]],
+    fallback_weights: dict[str, float],
+) -> np.ndarray:
+    probs = np.zeros(len(merged), dtype=np.float32)
+    for row_index, group_name in enumerate(group_labels.astype(str).tolist()):
+        weights = grouped_weights.get(group_name, fallback_weights)
+        row_prob = np.float32(0.0)
+        for member_name, weight in weights.items():
+            column = f"y_prob__{member_name}"
+            if column not in merged.columns:
+                continue
+            row_prob += np.float32(weight) * np.float32(merged.iloc[row_index][column])
+        probs[row_index] = row_prob
+    return probs
+
+
+def _meta_feature_matrices(
+    val_merged: pd.DataFrame,
+    test_merged: pd.DataFrame,
+    *,
+    member_names: tuple[str, ...],
+    context_features: tuple[str, ...],
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    feature_names = [f"y_prob__{member_name}" for member_name in member_names]
+    val_matrix = val_merged[feature_names].to_numpy(dtype=np.float32)
+    test_matrix = test_merged[feature_names].to_numpy(dtype=np.float32)
+    if not context_features:
+        return val_matrix, test_matrix, feature_names
+
+    val_context = _meta_context_frame(val_merged)
+    test_context = _meta_context_frame(test_merged)
+    combined_context = pd.concat([val_context, test_context], axis=0, ignore_index=True)
+    encoded_columns: list[np.ndarray] = []
+    encoded_names: list[str] = []
+    split_index = len(val_context)
+    for feature_name in context_features:
+        if feature_name not in combined_context.columns:
+            raise ValueError(f"Unsupported meta_context_feature: {feature_name}")
+        series = combined_context[feature_name]
+        if pd.api.types.is_numeric_dtype(series):
+            encoded = pd.to_numeric(series, errors="coerce").fillna(0.0).to_numpy(dtype=np.float32)
+        else:
+            encoded = pd.Categorical(series.astype(str)).codes.astype(np.float32)
+        encoded_columns.append(encoded)
+        encoded_names.append(f"context__{feature_name}")
+    if encoded_columns:
+        context_matrix = np.column_stack(encoded_columns).astype(np.float32)
+        val_matrix = np.column_stack([val_matrix, context_matrix[:split_index]])
+        test_matrix = np.column_stack([test_matrix, context_matrix[split_index:]])
+        feature_names = feature_names + encoded_names
+    return val_matrix, test_matrix, feature_names
+
+
+def _meta_scale_pos_weight(y_true: np.ndarray) -> float:
+    positives = float(np.sum(y_true))
+    negatives = float(len(y_true) - positives)
+    if positives <= 0.0:
+        return 1.0
+    return max(negatives / positives, 1.0)
+
+
 def _write_meta_summary_outputs(
     output_path: Path,
     *,
@@ -648,24 +811,6 @@ def _build_late_fusion_artifacts(
     first_artifacts = next(iter(member_artifacts.values()))
     sample_manifest = pd.read_csv(first_artifacts["sample_manifest"])
 
-    raw_scores = {
-        member_name: _meta_metric_score(pd.read_csv(artifacts["metrics_summary"]), split="val", metric="pr_auc")
-        for member_name, artifacts in member_artifacts.items()
-    }
-    member_weights = _normalize_member_weights(raw_scores)
-    member_weight_label = _member_weight_label(member_weights)
-    pd.DataFrame(
-        [
-            {
-                "experiment": config.name,
-                "member_experiment": member_name,
-                "val_pr_auc": raw_scores.get(member_name),
-                "weight": member_weights.get(member_name),
-            }
-            for member_name in member_artifacts
-        ]
-    ).to_csv(output_path / "member_weights.csv", index=False)
-
     val_merged = _merge_member_prediction_frames(
         {
             member_name: _collapse_seed_averaged_predictions(_read_prediction_subset(artifacts, split="val"))
@@ -681,14 +826,61 @@ def _build_late_fusion_artifacts(
     if val_merged.empty or test_merged.empty:
         raise RuntimeError(f"{config.name} could not build late-fusion predictions from empty member outputs.")
 
-    val_prob = _weighted_member_probability(val_merged, member_weights)
-    threshold = find_best_threshold_f1(val_merged["y_true"].to_numpy(dtype=int), val_prob)
-    test_prob = _weighted_member_probability(test_merged, member_weights)
-
-    extra = {
-        "fusion_strategy": "val_pr_auc_weighted",
-        "member_weights": member_weight_label,
-    }
+    if config.meta_group_strategy is None:
+        raw_scores = {
+            member_name: _meta_metric_score(pd.read_csv(artifacts["metrics_summary"]), split="val", metric="pr_auc")
+            for member_name, artifacts in member_artifacts.items()
+        }
+        member_weights = _normalize_member_weights(raw_scores)
+        member_weight_label = _member_weight_label(member_weights)
+        pd.DataFrame(
+            [
+                {
+                    "experiment": config.name,
+                    "member_experiment": member_name,
+                    "val_pr_auc": raw_scores.get(member_name),
+                    "weight": member_weights.get(member_name),
+                }
+                for member_name in member_artifacts
+            ]
+        ).to_csv(output_path / "member_weights.csv", index=False)
+        val_prob = _weighted_member_probability(val_merged, member_weights)
+        threshold = find_best_threshold_f1(val_merged["y_true"].to_numpy(dtype=int), val_prob)
+        test_prob = _weighted_member_probability(test_merged, member_weights)
+        extra = {
+            "fusion_strategy": "val_pr_auc_weighted",
+            "member_weights": member_weight_label,
+        }
+        val_group_labels = None
+        test_group_labels = None
+    else:
+        member_names = tuple(member_artifacts.keys())
+        grouped_weights, global_weights, weight_rows = _compute_grouped_member_weights(
+            val_merged,
+            member_names=member_names,
+            strategy=config.meta_group_strategy,
+        )
+        weight_rows.insert(0, "experiment", config.name)
+        weight_rows.to_csv(output_path / "member_weights.csv", index=False)
+        val_group_labels = _meta_group_labels(val_merged, strategy=config.meta_group_strategy)
+        test_group_labels = _meta_group_labels(test_merged, strategy=config.meta_group_strategy)
+        val_prob = _weighted_member_probability_by_group(
+            val_merged,
+            group_labels=val_group_labels,
+            grouped_weights=grouped_weights,
+            fallback_weights=global_weights,
+        )
+        threshold = find_best_threshold_f1(val_merged["y_true"].to_numpy(dtype=int), val_prob)
+        test_prob = _weighted_member_probability_by_group(
+            test_merged,
+            group_labels=test_group_labels,
+            grouped_weights=grouped_weights,
+            fallback_weights=global_weights,
+        )
+        extra = {
+            "fusion_strategy": f"{config.meta_group_strategy}_val_pr_auc_weighted",
+            "member_weights": "grouped",
+        }
     val_frame = _build_meta_prediction_frame(
         val_merged,
         val_prob,
@@ -709,6 +901,9 @@ def _build_late_fusion_artifacts(
         candidate="+".join(config.meta_members),
         extra_columns=extra,
     )
+    if val_group_labels is not None and test_group_labels is not None:
+        val_frame["fusion_group"] = val_group_labels.to_numpy()
+        test_frame["fusion_group"] = test_group_labels.to_numpy()
 
     val_metrics = _metrics_row(
         val_frame,
@@ -725,8 +920,8 @@ def _build_late_fusion_artifacts(
         candidate="+".join(config.meta_members),
     )
     for row in (val_metrics, test_metrics):
-        row["fusion_strategy"] = "val_pr_auc_weighted"
-        row["member_weights"] = member_weight_label
+        row["fusion_strategy"] = extra["fusion_strategy"]
+        row["member_weights"] = extra["member_weights"]
 
     artifacts = _write_meta_summary_outputs(
         output_path,
@@ -765,42 +960,175 @@ def _build_stacking_artifacts(
     if val_merged.empty or test_merged.empty:
         raise RuntimeError(f"{config.name} could not build stacking predictions from empty member outputs.")
 
-    feature_columns = [f"y_prob__{member_name}" for member_name in member_artifacts]
-    val_X = val_merged[feature_columns].to_numpy(dtype=np.float32)
-    test_X = test_merged[feature_columns].to_numpy(dtype=np.float32)
+    member_names = tuple(member_artifacts.keys())
+    val_X, test_X, feature_columns = _meta_feature_matrices(
+        val_merged,
+        test_merged,
+        member_names=member_names,
+        context_features=config.meta_context_features,
+    )
     val_y = val_merged["y_true"].to_numpy(dtype=int)
-    stacker_strategy = "logistic_regression"
-    stacker_c = 1.0
-    if np.unique(val_y).size < 2:
-        stacker_strategy = "mean_fallback"
-        val_prob = val_X.mean(axis=1).astype(np.float32)
-        test_prob = test_X.mean(axis=1).astype(np.float32)
-        coefficient_rows = [
-            {
-                "experiment": config.name,
-                "feature": member_name,
-                "coefficient": 1.0 / float(len(member_artifacts)),
-                "intercept": 0.0,
-                "stacker_strategy": stacker_strategy,
+    model_name = "StackingLightGBM" if config.meta_stacker_model == "lightgbm" else "StackingLogisticRegression"
+
+    def _fit_meta_stacker(train_X: np.ndarray, train_y: np.ndarray, *, seed: int) -> dict[str, object]:
+        if np.unique(train_y).size < 2:
+            return {
+                "kind": "mean_fallback",
+                "model": None,
+                "stacker_strategy": "mean_fallback",
+                "stacker_C": 1.0,
+            }
+        if config.meta_stacker_model == "lightgbm":
+            num_leaves = config.meta_stacker_num_leaves or 15
+            learning_rate = config.meta_stacker_learning_rate or 0.05
+            n_estimators = config.meta_stacker_n_estimators or 200
+            model = fit_lightgbm_classifier(
+                train_X,
+                train_y,
+                num_leaves=num_leaves,
+                learning_rate=learning_rate,
+                n_estimators=n_estimators,
+                scale_pos_weight=_meta_scale_pos_weight(train_y),
+                seed=seed,
+            )
+            return {
+                "kind": "lightgbm",
+                "model": model,
+                "stacker_strategy": "lightgbm",
                 "stacker_C": pd.NA,
             }
-            for member_name in member_artifacts
-        ]
-    else:
-        stacker = fit_logistic_regression(val_X, val_y, C=stacker_c, seed=config.random_seed)
-        val_prob = predict_logistic_regression(stacker, val_X)
-        test_prob = predict_logistic_regression(stacker, test_X)
-        coefficient_rows = [
+        stacker_c = 1.0
+        model = fit_logistic_regression(train_X, train_y, C=stacker_c, seed=seed)
+        return {
+            "kind": "logistic_regression",
+            "model": model,
+            "stacker_strategy": "logistic_regression",
+            "stacker_C": stacker_c,
+        }
+
+    def _predict_meta_stacker(stacker_info: dict[str, object], X: np.ndarray) -> np.ndarray:
+        kind = stacker_info["kind"]
+        if kind == "mean_fallback":
+            return X.mean(axis=1).astype(np.float32)
+        if kind == "lightgbm":
+            return predict_lightgbm(stacker_info["model"], X)
+        return predict_logistic_regression(stacker_info["model"], X)
+
+    def _stacker_rows(
+        stacker_info: dict[str, object],
+        *,
+        group_label: str | None,
+        group_sample_count: int,
+        group_positive_count: int,
+    ) -> list[dict[str, object]]:
+        kind = stacker_info["kind"]
+        if kind == "lightgbm":
+            importance = getattr(stacker_info["model"], "feature_importances_", np.zeros(len(feature_columns)))
+            return [
+                {
+                    "experiment": config.name,
+                    "feature": feature_name,
+                    "coefficient": pd.NA,
+                    "intercept": pd.NA,
+                    "stacker_strategy": stacker_info["stacker_strategy"],
+                    "stacker_C": stacker_info["stacker_C"],
+                    "importance": float(importance[feature_index]) if feature_index < len(importance) else 0.0,
+                    "stacker_group": group_label if group_label is not None else pd.NA,
+                    "stacker_group_strategy": config.meta_group_strategy if group_label is not None else pd.NA,
+                    "group_sample_count": group_sample_count,
+                    "group_positive_count": group_positive_count,
+                }
+                for feature_index, feature_name in enumerate(feature_columns)
+            ]
+        if kind == "logistic_regression":
+            model = stacker_info["model"]
+            return [
+                {
+                    "experiment": config.name,
+                    "feature": feature_name,
+                    "coefficient": float(model.coef_[0][feature_index]),
+                    "intercept": float(model.intercept_[0]),
+                    "stacker_strategy": stacker_info["stacker_strategy"],
+                    "stacker_C": stacker_info["stacker_C"],
+                    "importance": pd.NA,
+                    "stacker_group": group_label if group_label is not None else pd.NA,
+                    "stacker_group_strategy": config.meta_group_strategy if group_label is not None else pd.NA,
+                    "group_sample_count": group_sample_count,
+                    "group_positive_count": group_positive_count,
+                }
+                for feature_index, feature_name in enumerate(feature_columns)
+            ]
+        fallback_weight = 1.0 / float(len(feature_columns))
+        return [
             {
                 "experiment": config.name,
-                "feature": member_name,
-                "coefficient": float(stacker.coef_[0][feature_index]),
-                "intercept": float(stacker.intercept_[0]),
-                "stacker_strategy": stacker_strategy,
-                "stacker_C": stacker_c,
+                "feature": feature_name,
+                "coefficient": fallback_weight,
+                "intercept": 0.0,
+                "stacker_strategy": stacker_info["stacker_strategy"],
+                "stacker_C": stacker_info["stacker_C"],
+                "importance": pd.NA,
+                "stacker_group": group_label if group_label is not None else pd.NA,
+                "stacker_group_strategy": config.meta_group_strategy if group_label is not None else pd.NA,
+                "group_sample_count": group_sample_count,
+                "group_positive_count": group_positive_count,
             }
-            for feature_index, member_name in enumerate(member_artifacts)
+            for feature_name in feature_columns
         ]
+
+    global_stacker = _fit_meta_stacker(val_X, val_y, seed=config.random_seed)
+    stacker_c = global_stacker["stacker_C"]
+    val_group_labels = None
+    test_group_labels = None
+
+    if config.meta_group_strategy is None:
+        stacker_strategy = str(global_stacker["stacker_strategy"])
+        val_prob = _predict_meta_stacker(global_stacker, val_X)
+        test_prob = _predict_meta_stacker(global_stacker, test_X)
+        coefficient_rows = _stacker_rows(
+            global_stacker,
+            group_label=None,
+            group_sample_count=int(len(val_y)),
+            group_positive_count=int(val_y.sum()),
+        )
+    else:
+        stacker_strategy = f"grouped_{config.meta_stacker_model}"
+        val_group_labels = _meta_group_labels(val_merged, strategy=config.meta_group_strategy)
+        test_group_labels = _meta_group_labels(test_merged, strategy=config.meta_group_strategy)
+        val_prob = _predict_meta_stacker(global_stacker, val_X)
+        test_prob = _predict_meta_stacker(global_stacker, test_X)
+        coefficient_rows = _stacker_rows(
+            global_stacker,
+            group_label="__global__",
+            group_sample_count=int(len(val_y)),
+            group_positive_count=int(val_y.sum()),
+        )
+        for group_index, group_label in enumerate(pd.Index(val_group_labels.dropna().unique())):
+            group_mask = (val_group_labels == group_label).to_numpy(dtype=bool)
+            group_sample_count = int(group_mask.sum())
+            if group_sample_count < 200:
+                continue
+            group_positive_count = int(val_y[group_mask].sum())
+            group_negative_count = group_sample_count - group_positive_count
+            if group_positive_count < 10 or group_negative_count < 10:
+                continue
+            group_stacker = _fit_meta_stacker(
+                val_X[group_mask],
+                val_y[group_mask],
+                seed=config.random_seed + group_index + 1,
+            )
+            val_prob[group_mask] = _predict_meta_stacker(group_stacker, val_X[group_mask])
+            test_group_mask = (test_group_labels == group_label).to_numpy(dtype=bool)
+            if int(test_group_mask.sum()) > 0:
+                test_prob[test_group_mask] = _predict_meta_stacker(group_stacker, test_X[test_group_mask])
+            coefficient_rows.extend(
+                _stacker_rows(
+                    group_stacker,
+                    group_label=str(group_label),
+                    group_sample_count=group_sample_count,
+                    group_positive_count=group_positive_count,
+                )
+            )
     pd.DataFrame(coefficient_rows).to_csv(output_path / "stacking_coefficients.csv", index=False)
 
     threshold = find_best_threshold_f1(val_y, val_prob)
@@ -813,7 +1141,7 @@ def _build_stacking_artifacts(
         val_merged,
         val_prob,
         experiment=config.name,
-        model="StackingLogisticRegression",
+        model=model_name,
         split="val",
         threshold=threshold,
         candidate=candidate,
@@ -823,30 +1151,34 @@ def _build_stacking_artifacts(
         test_merged,
         test_prob,
         experiment=config.name,
-        model="StackingLogisticRegression",
+        model=model_name,
         split="test",
         threshold=threshold,
         candidate=candidate,
         extra_columns=extra,
     )
+    if val_group_labels is not None and test_group_labels is not None:
+        val_frame["stacker_group"] = val_group_labels.to_numpy()
+        test_frame["stacker_group"] = test_group_labels.to_numpy()
 
     val_metrics = _metrics_row(
         val_frame,
         experiment=config.name,
-        model="StackingLogisticRegression",
+        model=model_name,
         split="val",
         candidate=candidate,
     )
     test_metrics = _metrics_row(
         test_frame,
         experiment=config.name,
-        model="StackingLogisticRegression",
+        model=model_name,
         split="test",
         candidate=candidate,
     )
     for row in (val_metrics, test_metrics):
         row["stacker_strategy"] = stacker_strategy
         row["stacker_C"] = stacker_c
+        row["stacker_group_strategy"] = config.meta_group_strategy
 
     artifacts = _write_meta_summary_outputs(
         output_path,
@@ -1299,6 +1631,109 @@ def _run_calibration_experiment(
         (config.name,),
         (
             f"calibration experiment completed | selected={selected_name} | method={calibrator.method} "
+            f"| elapsed={format_duration(reporter.now() - experiment_started_at)} | artifacts={output_path}"
+        ),
+    )
+    return artifacts
+
+
+def _run_best_member_late_fusion_experiment(
+    config: ExperimentConfig,
+    *,
+    output_path: Path,
+    folds,
+    final_train_range,
+    final_test_range,
+    skip_unavailable_models: bool,
+    reporter: ProgressReporter | None,
+) -> dict[str, Path]:
+    if len(config.meta_members) < 2:
+        raise ValueError(f"{config.name} requires at least one anchor member and one candidate member.")
+    output_path.mkdir(parents=True, exist_ok=True)
+    progress_log = output_path / "progress.log"
+    reporter = (reporter or ProgressReporter()).with_log_file(progress_log)
+    experiment_started_at = reporter.now()
+    anchor_name, *candidate_names = config.meta_members
+    reporter.log(
+        (config.name,),
+        (
+            f"best-member late-fusion experiment started | anchor={anchor_name} "
+            f"| candidates={tuple(candidate_names)} | data={config.data_path} | output={output_path}"
+        ),
+    )
+
+    member_artifacts: dict[str, dict[str, Path]] = {}
+    member_configs = _resolve_meta_member_configs(config)
+    member_loop_started_at = reporter.now()
+    for member_index, member_config in enumerate(member_configs, start=1):
+        member_started_at = reporter.now()
+        reporter.log(
+            (config.name, member_config.name),
+            f"member {member_index}/{len(member_configs)} started",
+        )
+        member_artifacts[member_config.name], reused = _run_or_reuse_artifacts(
+            member_config,
+            nested_output_root=output_path / "member_runs",
+            search_root=output_path.parent,
+            folds=folds,
+            final_train_range=final_train_range,
+            final_test_range=final_test_range,
+            skip_unavailable_models=skip_unavailable_models,
+            reporter=reporter,
+            log_prefix=(config.name, member_config.name),
+        )
+        reporter.log_step(
+            (config.name, member_config.name),
+            label="member",
+            index=member_index,
+            total=len(member_configs),
+            loop_started_at=member_loop_started_at,
+            step_started_at=member_started_at,
+            extra="reused" if reused else "completed",
+        )
+
+    candidate_scores = pd.DataFrame(
+        [
+            {
+                "experiment": config.name,
+                "anchor_experiment": anchor_name,
+                "candidate_experiment": candidate_name,
+                "val_pr_auc": _meta_metric_score(
+                    pd.read_csv(member_artifacts[candidate_name]["metrics_summary"]),
+                    split="val",
+                    metric="pr_auc",
+                ),
+            }
+            for candidate_name in candidate_names
+        ]
+    ).sort_values("val_pr_auc", ascending=False, kind="mergesort")
+    candidate_scores.to_csv(output_path / "candidate_scores.csv", index=False)
+    if candidate_scores.empty:
+        raise RuntimeError(f"{config.name} did not produce any candidate scores.")
+
+    selected_name = str(candidate_scores.iloc[0]["candidate_experiment"])
+    reporter.log(
+        (config.name,),
+        f"selected candidate | anchor={anchor_name} | candidate={selected_name}",
+    )
+    fusion_config = replace(
+        config,
+        meta_kind="late_fusion",
+        meta_members=(anchor_name, selected_name),
+    )
+    artifacts = _build_late_fusion_artifacts(
+        fusion_config,
+        output_path=output_path,
+        member_artifacts={
+            anchor_name: member_artifacts[anchor_name],
+            selected_name: member_artifacts[selected_name],
+        },
+    )
+    artifacts["candidate_scores"] = output_path / "candidate_scores.csv"
+    reporter.log(
+        (config.name,),
+        (
+            f"best-member late-fusion experiment completed | selected={selected_name} "
             f"| elapsed={format_duration(reporter.now() - experiment_started_at)} | artifacts={output_path}"
         ),
     )

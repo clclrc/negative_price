@@ -387,3 +387,114 @@ class NegativePriceConfigTest(unittest.TestCase):
 
         self.assertEqual(configs["E64"].meta_kind, "stacking")
         self.assertEqual(configs["E64"].meta_members, ("E49", "E42", "E43", "E44"))
+
+    def test_default_configs_include_context_aware_fusion_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E65", "E66", "E67", "E68"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E49"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+            self.assertEqual(configs[name].models, ())
+            self.assertEqual(configs[name].meta_members, ("E49", "E42", "E43", "E44"))
+
+        self.assertEqual(configs["E65"].meta_kind, "stacking")
+        self.assertEqual(configs["E65"].meta_stacker_model, "lightgbm")
+        self.assertEqual(configs["E65"].meta_context_features, ())
+
+        self.assertEqual(configs["E66"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E66"].meta_group_strategy, "country")
+
+        self.assertEqual(configs["E67"].meta_kind, "late_fusion")
+        self.assertEqual(configs["E67"].meta_group_strategy, "season_weekpart")
+
+        self.assertEqual(configs["E68"].meta_kind, "stacking")
+        self.assertEqual(configs["E68"].meta_stacker_model, "lightgbm")
+        self.assertEqual(configs["E68"].meta_context_features, ("country", "month", "hour", "is_weekend"))
+
+    def test_default_configs_include_grouped_and_subset_stacking_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E69", "E70", "E71", "E72"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E49"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+            self.assertEqual(configs[name].models, ())
+            self.assertEqual(configs[name].meta_kind, "stacking")
+            self.assertEqual(configs[name].meta_stacker_model, "lightgbm")
+
+        self.assertEqual(configs["E69"].meta_members, ("E49", "E42", "E43", "E44"))
+        self.assertEqual(configs["E69"].meta_group_strategy, "country")
+
+        self.assertEqual(configs["E70"].meta_members, ("E49", "E42", "E43", "E44"))
+        self.assertEqual(configs["E70"].meta_group_strategy, "season_weekpart")
+
+        self.assertEqual(configs["E71"].meta_members, ("E49", "E42", "E44"))
+        self.assertIsNone(configs["E71"].meta_group_strategy)
+
+        self.assertEqual(configs["E72"].meta_members, ("E49", "E43", "E44"))
+        self.assertIsNone(configs["E72"].meta_group_strategy)
+
+    def test_default_configs_include_meta_stacker_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E73", "E74", "E75", "E76"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E49"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+            self.assertEqual(configs[name].models, ())
+            self.assertEqual(configs[name].meta_kind, "stacking")
+            self.assertEqual(configs[name].meta_stacker_model, "lightgbm")
+
+        self.assertEqual(configs["E73"].meta_members, ("E49", "E42", "E43"))
+        self.assertIsNone(configs["E73"].meta_group_strategy)
+
+        self.assertEqual(configs["E74"].meta_members, ("E49", "E42", "E43", "E44"))
+        self.assertEqual(configs["E74"].meta_stacker_num_leaves, 7)
+        self.assertEqual(configs["E74"].meta_stacker_learning_rate, 0.03)
+        self.assertEqual(configs["E74"].meta_stacker_n_estimators, 400)
+
+        self.assertEqual(configs["E75"].meta_members, ("E49", "E42", "E43", "E44"))
+        self.assertEqual(configs["E75"].meta_stacker_num_leaves, 31)
+        self.assertEqual(configs["E75"].meta_stacker_learning_rate, 0.03)
+        self.assertEqual(configs["E75"].meta_stacker_n_estimators, 500)
+
+        self.assertEqual(configs["E76"].meta_members, ("E49", "E42", "E44"))
+        self.assertEqual(configs["E76"].meta_stacker_num_leaves, 7)
+        self.assertEqual(configs["E76"].meta_stacker_learning_rate, 0.03)
+        self.assertEqual(configs["E76"].meta_stacker_n_estimators, 400)
+
+    def test_default_configs_include_new_member_generation_follow_ups(self) -> None:
+        configs = build_default_experiment_configs(Path("toy.csv"))
+
+        for name in ("E77", "E78", "E79", "E80"):
+            self.assertIn(name, configs)
+            self.assertEqual(configs[name].countries, configs["E49"].countries)
+            self.assertEqual(configs[name].feature_group, "public")
+            self.assertEqual(configs[name].window_hours, 168)
+            self.assertEqual(configs[name].horizon_hours, 6)
+
+        self.assertEqual(configs["E77"].models, ("LightGBM",))
+        self.assertTrue(configs["E77"].use_mechanism_features)
+        self.assertFalse(configs["E77"].use_mechanism_sequence_features)
+
+        self.assertEqual(configs["E78"].models, ("CatBoost",))
+        self.assertTrue(configs["E78"].use_mechanism_features)
+        self.assertFalse(configs["E78"].use_mechanism_sequence_features)
+
+        self.assertEqual(configs["E79"].models, ("GRUMultiMarket",))
+        self.assertFalse(configs["E79"].use_mechanism_features)
+        self.assertTrue(configs["E79"].use_mechanism_sequence_features)
+        self.assertEqual(configs["E79"].sequence_learning_rate, 1e-3)
+        self.assertEqual(configs["E79"].sequence_max_epochs, 30)
+        self.assertEqual(configs["E79"].sequence_patience, 5)
+
+        self.assertEqual(configs["E80"].models, ())
+        self.assertEqual(configs["E80"].meta_kind, "best_member_late_fusion")
+        self.assertEqual(configs["E80"].meta_members, ("E75", "E77", "E78", "E79"))

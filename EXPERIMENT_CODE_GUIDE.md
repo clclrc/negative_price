@@ -150,11 +150,28 @@ Important:
 - `E62` extends that test by combining the stable deep line with the two strongest completed tree baselines
 - `E63` is the current full late-fusion ceiling test across `E49`, `E42`, `E43`, and `E44`
 - `E64` replaces simple validation-`PR-AUC` weighting with an out-of-fold stacking meta-learner over the same strongest completed members
+- `E65` upgrades the global stacker to a nonlinear `LightGBM` meta-learner over `E49`, `E42`, `E43`, and `E44`
+- `E66` applies grouped late-fusion by country over the same completed members
+- `E67` applies grouped late-fusion by broad seasonal/weekpart regime over the same completed members
+- `E68` adds light context (`country`, `month`, `hour`, `is_weekend`) to the nonlinear stacker
+- `E69` and `E70` apply grouped nonlinear `LightGBM` stacking by country and by seasonal/weekpart regime
+- `E71` and `E72` test reduced-member nonlinear stackers to measure whether `E43` or `E44` is redundant once `E42` is present
+- `E73` tests the remaining high-value subset `E49 + E42 + E43`
+- `E74-E76` are low-cost `LightGBM` meta-stacker hyperparameter variants around the strongest completed member combinations
+- `E77` and `E78` are mechanism-aware tree baselines on the main `20-country + public + window=168 + h=6` task; they reuse the existing tabular mechanism-feature path
+- `E79` keeps the `GRUMultiMarket` backbone but augments the sequence input itself with public-derived mechanism channels, rather than adding a separate handcrafted branch
+- `E80` is a conditional score-ceiling wrapper: it reuses or runs `E75`, `E77`, `E78`, and `E79`, selects the strongest validation-time new member among `E77-E79`, then builds a late fusion between `E75` and that selected member
 
 Meta wrappers now prefer artifact reuse before retraining nested members:
 - late-fusion, stacking, cross-seed, calibration, and repeated-seed wrappers first look for complete prior artifacts for the required nested experiment or seed run
 - reuse requires a complete artifact bundle with `sample_manifest.csv`, `metrics_summary.csv`, `predictions.csv`, and `progress.log`
 - if no complete prior bundle is found, the wrapper falls back to rerunning that nested experiment
+- `best_member_late_fusion` treats the first listed `meta_members` entry as the fixed anchor branch and chooses the strongest remaining member by validation `PR-AUC` before fusing
+
+Meta-stacking notes:
+- stacking wrappers can use either logistic regression or `LightGBM` as the meta-learner
+- stacking wrappers can optionally append light context features or fit grouped variants by `country` or by `season_weekpart`
+- `LightGBM` stackers can be tuned per experiment through config-level overrides for `num_leaves`, `learning_rate`, and `n_estimators`
 
 All default experiment definitions are created in:
 

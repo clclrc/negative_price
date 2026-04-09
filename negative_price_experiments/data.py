@@ -77,6 +77,7 @@ class CountryPanel:
     original_price: np.ndarray
     missing_masks: np.ndarray
     context_values: np.ndarray
+    mechanism_values: np.ndarray | None = None
 
 
 class SequenceDataset:
@@ -101,7 +102,7 @@ class SequenceDataset:
         self.sequence_arrays = {
             country: np.concatenate(
                 [
-                    scaler.transform(panel.numeric_values),
+                    scaler.transform(_sequence_continuous_values(self.prepared, panel)),
                     panel.missing_masks.astype(np.float32),
                     panel.context_values.astype(np.float32),
                 ],
@@ -171,9 +172,15 @@ class PreparedExperimentData:
             for country, panel in country_panels.items()
         }
         self.numeric_features = config.numeric_features
+        self.mechanism_sequence_feature_names = _mechanism_sequence_feature_names(config)
         self.mask_feature_names = tuple(f"{feature}{MASK_SUFFIX}" for feature in self.numeric_features)
         self.context_feature_names = CALENDAR_CONTEXT_FEATURES
-        self.sequence_feature_names = self.numeric_features + self.mask_feature_names + self.context_feature_names
+        self.sequence_feature_names = (
+            self.numeric_features
+            + self.mechanism_sequence_feature_names
+            + self.mask_feature_names
+            + self.context_feature_names
+        )
 
     def select_samples(self, time_range, *, countries: tuple[str, ...] | list[str] | None = None) -> pd.DataFrame:
         mask = time_range.contains(self.sample_manifest["target_time"])
@@ -188,9 +195,9 @@ class PreparedExperimentData:
         for country, group in train_samples.groupby("country", sort=False):
             panel = self.country_panels[country]
             max_anchor = int(group["anchor_index"].max())
-            arrays.append(panel.numeric_values[: max_anchor + 1])
+            arrays.append(_sequence_continuous_values(self, panel)[: max_anchor + 1])
         values = np.concatenate(arrays, axis=0)
-        return NumericScaler.fit(values, self.numeric_features)
+        return NumericScaler.fit(values, self.numeric_features + self.mechanism_sequence_feature_names)
 
     def build_sequence_dataset(
         self,
@@ -361,7 +368,18 @@ def _build_country_panel_and_manifest(
         original_price=group["_original_price"].to_numpy(dtype=np.float32),
         missing_masks=group[[f"{feature}{MASK_SUFFIX}" for feature in config.numeric_features]].to_numpy(dtype=np.float32),
         context_values=group[list(CALENDAR_CONTEXT_FEATURES)].to_numpy(dtype=np.float32),
+        mechanism_values=None,
     )
+    if config.use_mechanism_sequence_features:
+        panel = CountryPanel(
+            country=panel.country,
+            times=panel.times,
+            numeric_values=panel.numeric_values,
+            original_price=panel.original_price,
+            missing_masks=panel.missing_masks,
+            context_values=panel.context_values,
+            mechanism_values=_build_sequence_mechanism_values(config, panel),
+        )
     sample_filter_values = group[list(config.sample_filter_numeric_features)].to_numpy(dtype=np.float32)
     return panel, _build_sample_manifest_for_country(config, panel, sample_filter_values)
 
@@ -534,3 +552,96 @@ def _build_mechanism_feature_values(
         )
     )
     return values
+
+
+def _mechanism_sequence_feature_names(config: ExperimentConfig) -> tuple[str, ...]:
+    if not config.use_mechanism_sequence_features:
+        return ()
+    names: list[str] = []
+    for feature in ("load", "temp_2m_c", "wind_speed_10m_ms", "shortwave_radiation_wm2"):
+        if feature not in config.numeric_features:
+            continue
+        for step in MECHANISM_RAMP_STEPS:
+            names.append(f"{feature}__seq_ramp_{step}")
+        names.append(f"{feature}__seq_anomaly_24")
+    if "price" in config.numeric_features:
+        names.extend(("price__seq_drawdown_24", "price__seq_drawdown_72"))
+    names.extend(
+        (
+            "is_night_utc__seq",
+            "is_weekend_local__x_night_utc__seq",
+            "is_holiday_local__x_night_utc__seq",
+            "is_weekend_local__x_low_load_24__seq",
+            "is_holiday_local__x_low_load_24__seq",
+        )
+    )
+    return tuple(names)
+
+
+def _sequence_continuous_values(prepared: PreparedExperimentData, panel: CountryPanel) -> np.ndarray:
+    if not prepared.mechanism_sequence_feature_names or panel.mechanism_values is None:
+        return panel.numeric_values
+    return np.concatenate([panel.numeric_values, panel.mechanism_values], axis=1).astype(np.float32)
+
+
+def _rolling_nanmean(series: np.ndarray, window: int) -> np.ndarray:
+    values = pd.Series(series, copy=False)
+    return values.rolling(window=window, min_periods=1).mean().to_numpy(dtype=np.float32)
+
+
+def _rolling_nanmin(series: np.ndarray, window: int) -> np.ndarray:
+    values = pd.Series(series, copy=False)
+    return values.rolling(window=window, min_periods=1).min().to_numpy(dtype=np.float32)
+
+
+def _ramp_feature(series: np.ndarray, step: int) -> np.ndarray:
+    series = np.nan_to_num(series.astype(np.float32, copy=False), nan=0.0, posinf=0.0, neginf=0.0)
+    lagged = np.empty_like(series)
+    lagged[:step] = series[0]
+    lagged[step:] = series[:-step]
+    return (series - lagged).astype(np.float32)
+
+
+def _build_sequence_mechanism_values(config: ExperimentConfig, panel: CountryPanel) -> np.ndarray:
+    if not config.use_mechanism_sequence_features:
+        return np.zeros((len(panel.times), 0), dtype=np.float32)
+    feature_to_idx = {feature: idx for idx, feature in enumerate(config.numeric_features)}
+    values: list[np.ndarray] = []
+
+    for feature in ("load", "temp_2m_c", "wind_speed_10m_ms", "shortwave_radiation_wm2"):
+        if feature not in feature_to_idx:
+            continue
+        series = panel.numeric_values[:, feature_to_idx[feature]].astype(np.float32, copy=False)
+        current = np.nan_to_num(series, nan=0.0, posinf=0.0, neginf=0.0)
+        for step in MECHANISM_RAMP_STEPS:
+            values.append(_ramp_feature(current, step))
+        values.append((current - np.nan_to_num(_rolling_nanmean(series, 24), nan=0.0)).astype(np.float32))
+
+    if "price" in feature_to_idx:
+        price_series = panel.numeric_values[:, feature_to_idx["price"]].astype(np.float32, copy=False)
+        current_price = np.nan_to_num(price_series, nan=0.0, posinf=0.0, neginf=0.0)
+        for window in (24, 72):
+            values.append((current_price - np.nan_to_num(_rolling_nanmin(price_series, window), nan=0.0)).astype(np.float32))
+
+    hour = pd.to_datetime(panel.times, utc=True).hour.to_numpy(dtype=np.float32)
+    is_night = np.where((hour >= 22.0) | (hour < 6.0), 1.0, 0.0).astype(np.float32)
+    weekend = panel.context_values[:, CALENDAR_CONTEXT_FEATURES.index("is_weekend_local")].astype(np.float32, copy=False)
+    holiday = panel.context_values[:, CALENDAR_CONTEXT_FEATURES.index("is_holiday_local")].astype(np.float32, copy=False)
+    if "load" in feature_to_idx:
+        load_series = panel.numeric_values[:, feature_to_idx["load"]].astype(np.float32, copy=False)
+        load_current = np.nan_to_num(load_series, nan=0.0, posinf=0.0, neginf=0.0)
+        load_mean_24 = np.nan_to_num(_rolling_nanmean(load_series, 24), nan=0.0)
+        low_load = np.where(load_current <= load_mean_24, 1.0, 0.0).astype(np.float32)
+    else:
+        low_load = np.zeros(len(panel.times), dtype=np.float32)
+
+    values.extend(
+        (
+            is_night,
+            (weekend * is_night).astype(np.float32),
+            (holiday * is_night).astype(np.float32),
+            (weekend * low_load).astype(np.float32),
+            (holiday * low_load).astype(np.float32),
+        )
+    )
+    return np.column_stack(values).astype(np.float32) if values else np.zeros((len(panel.times), 0), dtype=np.float32)

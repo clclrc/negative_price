@@ -329,3 +329,50 @@ class NegativePriceDataPrepTest(unittest.TestCase):
         self.assertEqual(item["market_x"].shape[1], 6)
         self.assertEqual(item["market_valid"].shape[0], 2)
         self.assertTrue(np.all(item["market_valid"] >= 0.0))
+
+    def test_sequence_mechanism_features_expand_sequence_channels(self) -> None:
+        df = pd.concat([build_toy_frame(periods=18, country="AT"), build_toy_frame(periods=18, country="BE")], ignore_index=True)
+        path = self.write_frame(df)
+        plain_config = ExperimentConfig(
+            name="PLAIN_MM",
+            data_path=path,
+            countries=("AT", "BE"),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("GRUMultiMarket",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+        )
+        mechanism_config = ExperimentConfig(
+            name="MECH_MM",
+            data_path=path,
+            countries=("AT", "BE"),
+            feature_group="public",
+            window_hours=6,
+            horizon_hours=1,
+            models=("GRUMultiMarket",),
+            split_strategy="unit",
+            ffill_limit=3,
+            primary_metric="pr_auc",
+            random_seed=42,
+            use_mechanism_sequence_features=True,
+        )
+
+        plain_prepared = prepare_experiment_data(plain_config)
+        mechanism_prepared = prepare_experiment_data(mechanism_config)
+        samples = mechanism_prepared.sample_manifest.head(3).copy()
+        plain_scaler = plain_prepared.fit_sequence_scaler(plain_prepared.sample_manifest.head(3).copy())
+        mechanism_scaler = mechanism_prepared.fit_sequence_scaler(samples)
+        plain_ds = plain_prepared.build_sequence_dataset(samples, plain_scaler, include_country=True, include_multi_market=True)
+        mechanism_ds = mechanism_prepared.build_sequence_dataset(
+            samples,
+            mechanism_scaler,
+            include_country=True,
+            include_multi_market=True,
+        )
+
+        self.assertGreater(len(mechanism_prepared.sequence_feature_names), len(plain_prepared.sequence_feature_names))
+        self.assertGreater(mechanism_ds[0]["x"].shape[1], plain_ds[0]["x"].shape[1])
